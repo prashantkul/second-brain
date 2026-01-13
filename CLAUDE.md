@@ -76,8 +76,25 @@ pkill -9 -f "agent_bot.py"
 | High Priority | `!` | `! Urgent: server down` |
 | Daily Digest | `/daily` | - |
 | Weekly Digest | `/weekly` | - |
+| View Reminders | `/reminders` | - |
 | Exit Q&A Mode | `/exit` | - |
 | Help | `/help` | - |
+
+### Task Due Dates & Reminders
+
+Tasks support natural language due dates:
+```
+t: Review proposal by Friday 3pm
+t: Call John in 2 hours
+t: Submit report tomorrow morning
+```
+
+Reminders are sent automatically:
+- 1 day before due time
+- 1 hour before due time
+- At due time
+
+View upcoming tasks with `/reminders`.
 
 ### Testing Deep Analysis
 
@@ -186,6 +203,39 @@ python test_harness.py cleanup 1
 - **`test-agent`**: Quick tests of agent logic, no Telegram involved
 - **`send`**: Full integration test through Telegram
 - **`test-jobs`/`test-deep`**: Test specific features
+
+## Notion Cleanup Script
+
+A utility script to maintain database hygiene.
+
+### Commands
+
+```bash
+# Show database statistics and health check
+python notion_cleanup.py stats
+
+# Find and remove duplicate entries (by title similarity)
+python notion_cleanup.py duplicates --dry-run
+python notion_cleanup.py duplicates              # Interactive confirm
+
+# Find and remove test data (entries with "test", "sample", etc.)
+python notion_cleanup.py test-data --dry-run
+python notion_cleanup.py test-data
+
+# Archive old completed tasks (default: 30+ days)
+python notion_cleanup.py completed-tasks --dry-run
+python notion_cleanup.py completed-tasks --days 60
+
+# Run all cleanups at once
+python notion_cleanup.py all --dry-run
+python notion_cleanup.py all
+```
+
+### Options
+
+- `--dry-run`: Preview what would be deleted without making changes
+- `--threshold 0.85`: Similarity threshold for duplicate detection (0-1)
+- `--days 30`: Age threshold for completed tasks
 
 ## Git Workflow
 
