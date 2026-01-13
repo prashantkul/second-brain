@@ -35,10 +35,100 @@ Telegram → Claude Agent SDK → Notion
 | **Smart Categorization** | Auto-categorize into People, Research, Links, or Tasks |
 | **Quick Prefixes** | `t:` `p:` `r:` `l:` for instant categorization |
 | **URL Analysis** | Auto-fetch and summarize articles/papers |
-| **Deep Paper Analysis** | Comprehensive research paper breakdown |
+| **Deep Paper Analysis** | Comprehensive research paper breakdown with Q&A |
+| **Job Analysis** | Extract requirements, suggest skills to develop |
+| **Research Potential** | Evaluate research ideas with two-stage analysis |
 | **Knowledge Query** | Ask questions about your saved knowledge |
 | **Daily Digest** | Morning briefing at 8:00 AM |
 | **Weekly Summary** | Week review on Sunday 6:00 PM |
+
+## Research Potential Analysis
+
+Evaluate research ideas before investing months of work. Uses a cost-optimized two-stage approach.
+
+### Usage
+
+| Prefix | Purpose | Model |
+|--------|---------|-------|
+| `rp:` | Quick potential assessment | Sonnet (~$0.15) |
+| `rp-deep:` | Full research deep dive | Sonnet → Opus |
+
+### Two-Stage Analysis Flow
+
+```
+rp-deep: <your research idea>
+              │
+              ▼
+┌─────────────────────────────────────┐
+│ Stage 1: Quick Assessment (Sonnet)  │
+│ • Novelty score                     │
+│ • Feasibility check                 │
+│ • Impact potential                  │
+│ • Verdict: PURSUE / PIVOT / PASS    │
+│                            ~$0.15   │
+└──────────────┬──────────────────────┘
+               │
+       ┌───────┴───────┐
+       │               │
+   PURSUE/         PIVOT/PASS
+   EXPLORE             │
+       │               ▼
+       ▼         ┌──────────────────┐
+┌──────────────┐ │ Save & Stop      │
+│ Stage 2:     │ │ Skips Opus       │
+│ Deep Dive    │ │ Saves ~$1-2!     │
+│ (Opus)       │ └──────────────────┘
+│              │
+│ • Literature │
+│ • Open gaps  │
+│ • Venues     │
+│ • Roadmap    │
+│      ~$1-2   │
+└──────────────┘
+```
+
+### Output Includes
+
+**Quick Assessment (`rp:`):**
+- Novelty, feasibility, impact scores
+- Quick literature pulse
+- Clear verdict with next steps
+
+**Deep Dive (`rp-deep:` with PURSUE verdict):**
+- Foundational & recent papers
+- Open problems & research gaps
+- Conference fit & deadlines
+- Collaboration opportunities
+- Phased research roadmap
+
+### Example
+
+```
+rp-deep: Using small language models for on-device code completion
+
+→ Stage 1: Quick assessment... (~$0.15)
+→ Verdict: PURSUE - Novel approach with practical applications
+→ Stage 2: Deep dive with Opus... (~$1-2)
+→ [Full analysis saved to Notion]
+```
+
+## Job Analysis
+
+Analyze job postings to understand requirements and identify skills to develop.
+
+### Usage
+
+```
+j: https://jobs.lever.co/company/role
+job: [paste job description]
+```
+
+### Output Includes
+- Company, role, location, level
+- Required skills with proficiency expectations
+- Nice-to-have skills
+- Skills gap analysis
+- Learning resources and recommendations
 
 ## Quick Start
 
@@ -104,7 +194,10 @@ python agent_bot.py
 | `p:` | Person | `p: John, CTO at Acme` |
 | `r:` | Research | `r: Ideas about AI agents` |
 | `l:` | Link | `l: Check out example.com` |
-| `d:` | Deep Analysis | `d: https://arxiv.org/abs/...` |
+| `d:` | Deep Paper Analysis | `d: https://arxiv.org/abs/...` |
+| `j:` | Job Analysis | `j: https://lever.co/job/...` |
+| `rp:` | Research Potential | `rp: LLMs for theorem proving` |
+| `rp-deep:` | Deep Research Dive | `rp-deep: Efficient attention` |
 | `!` | High Priority | `!t: Urgent deadline` |
 | `?` | Query Brain | `? What do I know about AI?` |
 
@@ -122,9 +215,14 @@ python agent_bot.py
 second-brain/
 ├── agent_bot.py           # Main entry point (Agent SDK)
 ├── tools.py               # MCP tools for Notion & Telegram
+├── test_harness.py        # Testing utilities for Claude Code
 ├── .claude/
 │   └── skills/
-│       └── SECOND_BRAIN.md  # Agent skill definition
+│       ├── SECOND_BRAIN.md       # Core categorization skill
+│       ├── DEEP_ANALYSIS.md      # Research paper analysis
+│       ├── JOB_ANALYSIS.md       # Job posting analysis
+│       └── RESEARCH_POTENTIAL.md # Research idea evaluation
+├── CLAUDE.md              # Context for Claude Code sessions
 ├── requirements.txt       # Python dependencies
 ├── scripts/               # Setup utilities
 ├── templates/             # Notion database template

@@ -72,6 +72,8 @@ Quick Prefixes:
 - l: or link: → Links
 - j: or job: → Jobs (analyze job posting, extract requirements, suggest skills)
 - d: or deep: → Deep paper analysis
+- rp: or research-potential: → Research potential analysis (is this worth pursuing?)
+- rp-deep: → Deep research dive (literature, gaps, venues, roadmap)
 - ! → High priority
 - ? → Query knowledge base
 
@@ -159,8 +161,14 @@ def get_telegram_updates(offset=None):
         return None
 
 
-async def process_with_agent(message_text: str, context: str = "") -> str:
-    """Process a message using Claude Agent SDK."""
+async def process_with_agent(message_text: str, context: str = "", model: str = None) -> str:
+    """Process a message using Claude Agent SDK.
+
+    Args:
+        message_text: The user's message
+        context: Additional context for the agent
+        model: Optional model override (e.g., "opus" for high-quality analysis)
+    """
 
     # Build the prompt with context
     prompt = message_text
@@ -181,6 +189,7 @@ async def process_with_agent(message_text: str, context: str = "") -> str:
         max_turns=10,
         cwd=str(Path(__file__).parent),
         setting_sources=["project"],  # Load skills from .claude/skills/
+        model=model,  # Use specified model (None = default, "opus" = high quality)
     )
 
     response_text = ""
@@ -271,22 +280,21 @@ async def handle_message(message_text: str):
 
 *Prefixes:*
 `t:` Task | `p:` Person | `r:` Research | `l:` Link
-`j:` Job analysis | `d:` Deep analysis | `!` High priority | `?` Query
+`j:` Job analysis | `d:` Deep paper analysis
+`rp:` Research potential | `rp-deep:` Deep research dive
+`!` High priority | `?` Query
 
 *Commands:*
 `/daily` - Today's digest
 `/weekly` - Weekly summary
-`/exit` - Exit paper Q&A mode
+`/exit` - Exit Q&A mode
 `/help` - This message
-
-*Features:*
-- Send URLs → Auto-analyze
-- `d:` URL → Deep paper analysis + Q&A
-- Ask questions about your knowledge
 
 *Examples:*
 `t: Review proposal by Friday`
 `d: https://arxiv.org/abs/...`
+`rp: Using LLMs for theorem proving`
+`j: https://lever.co/job/...`
 `? What do I know about AI?`
 """
             send_capture_message(help_text)
@@ -350,16 +358,63 @@ async def handle_message(message_text: str):
     if is_qa_mode_active() and should_exit_qa_mode(message_text):
         exit_qa_mode()
 
-    # Process with agent
-    send_capture_message("Processing...")
-
-    # Determine context based on prefix
+    # Determine context and model based on prefix
     context = ""
     is_deep_analysis = False
+    use_model = None  # Default model
 
     if message_text.startswith("?"):
         context = "The user is querying their knowledge base. Search Notion and synthesize an answer."
+    elif message_text.lower().startswith("rp-deep:"):
+        # Two-stage analysis: Sonnet first, then Opus only if worth pursuing
+        topic = message_text.split(":", 1)[1].strip() if ":" in message_text else message_text
+        send_capture_message("_Stage 1: Quick assessment with Sonnet..._")
+
+        # Stage 1: Quick assessment with Sonnet
+        stage1_context = (
+            "Do a QUICK research potential assessment. Be concise. "
+            "Evaluate novelty, feasibility, and impact. "
+            "End with a clear verdict: PURSUE, EXPLORE MORE, PIVOT, or PASS. "
+            "Do NOT save to Notion yet - just analyze and give verdict."
+        )
+        stage1_response = await process_with_agent(f"rp: {topic}", stage1_context, model=None)
+
+        # Check if worth pursuing with Opus
+        verdict_lower = stage1_response.lower() if stage1_response else ""
+        should_use_opus = "pursue" in verdict_lower or "explore more" in verdict_lower
+
+        if should_use_opus:
+            send_capture_message(f"_Verdict suggests potential! Stage 2: Deep dive with Opus (~$1-2)..._")
+            use_model = "opus"
+            context = (
+                "The user wants a DEEP RESEARCH DIVE on this topic. Use the research-potential skill Phase 2 format. "
+                "Include: foundational papers, recent advances, open problems, conference fit, collaboration opportunities, "
+                "and a detailed research roadmap. Save to Notion using save_deep_analysis with category 'Research'. "
+                f"Previous quick assessment:\n{stage1_response[:1000]}"
+            )
+        else:
+            send_capture_message("_Verdict: Not worth deep dive. Saving quick assessment only._")
+            # Send Stage 1 response and save to Notion
+            if stage1_response:
+                send_capture_message(stage1_response)
+            context = (
+                "Save this research assessment to Notion with category 'Research' and priority based on verdict. "
+                f"Assessment:\n{stage1_response}"
+            )
+            response = await process_with_agent(f"Save research assessment for: {topic}", context)
+            if response and not response.startswith("Message sent"):
+                send_capture_message(response)
+            return
+    elif message_text.lower().startswith(("rp:", "research-potential:")):
+        send_capture_message("_Analyzing research potential..._")
+        context = (
+            "The user wants to evaluate RESEARCH POTENTIAL of this topic/idea. Use the research-potential skill. "
+            "Assess: novelty, feasibility, impact potential, quick literature pulse. "
+            "Give a verdict (PURSUE/EXPLORE MORE/PIVOT/PASS) with next steps. "
+            "Save to Notion with category 'Research' and appropriate priority based on verdict."
+        )
     elif message_text.lower().startswith(("j:", "job:")):
+        send_capture_message("_Analyzing job posting..._")
         context = (
             "The user wants to analyze a JOB POSTING. Use the job-analysis skill. "
             "Extract: company, role, key requirements, required skills, nice-to-have skills. "
@@ -367,21 +422,19 @@ async def handle_message(message_text: str):
         )
     elif message_text.lower().startswith(("d:", "deep:")):
         is_deep_analysis = True
-        # Extract URL from message
-        url = ""
-        for word in message_text.split():
-            if word.startswith("http"):
-                url = word
-                break
+        send_capture_message("_Deep paper analysis..._")
         context = (
             "The user wants DEEP ANALYSIS of this paper/article. "
             "Use the deep-analysis skill format. "
             "After analysis, save to Notion using save_document_to_notion."
         )
     elif "http" in message_text:
+        send_capture_message("_Processing URL..._")
         context = "The user shared a URL. Fetch the content, analyze it, and save to Notion with proper categorization."
+    else:
+        send_capture_message("_Processing..._")
 
-    response = await process_with_agent(message_text, context)
+    response = await process_with_agent(message_text, context, model=use_model)
 
     # If deep analysis, enter Q&A mode
     if is_deep_analysis and response:
