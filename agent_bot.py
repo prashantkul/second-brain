@@ -19,7 +19,7 @@ import time
 import threading
 from dotenv import load_dotenv
 
-from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from tools import create_second_brain_server
 
@@ -146,13 +146,20 @@ async def process_with_agent(message_text: str, context: str = "") -> str:
     response_text = ""
 
     try:
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        response_text += block.text
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query(prompt)
+            async for message in client.receive_response():
+                # Extract text from response messages
+                if hasattr(message, 'result'):
+                    response_text = message.result
+                elif hasattr(message, 'content'):
+                    for block in message.content:
+                        if hasattr(block, 'text'):
+                            response_text += block.text
     except Exception as e:
+        import traceback
         logger.error(f"Agent error: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         response_text = f"Error processing message: {str(e)}"
 
     return response_text
