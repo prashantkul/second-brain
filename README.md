@@ -1,17 +1,30 @@
 # Second Brain
 
-A personal knowledge management system powered by Claude AI. Capture thoughts, analyze research papers, and query your knowledge base - all through Telegram.
+A personal knowledge management system powered by Claude Agent SDK. Capture thoughts, analyze research papers, and query your knowledge base - all through Telegram.
+
+## Introduction
+
+Second Brain is a Telegram bot that serves as your intelligent knowledge companion. It captures thoughts, links, research, and tasks directly from Telegram conversations and stores everything in Notion with automatic categorization. Built on the Claude Agent SDK with a skills-based architecture, it goes beyond simple note-taking to provide deep analysis of research papers, job posting insights with personalized skill recommendations, and automated daily and weekly digests to keep you informed.
+
+## Benefits
+
+- **Frictionless Capture**: Send anything to Telegram and let the AI handle categorization and storage
+- **Intelligent Organization**: Automatic tagging and structuring in Notion eliminates manual filing
+- **Research Acceleration**: Deep analysis extracts key insights from papers and articles
+- **Career Intelligence**: Job posting analysis identifies skill gaps and growth opportunities
+- **Proactive Recall**: Scheduled digests surface relevant knowledge when you need it
+- **Natural Interaction**: Query your entire knowledge base using conversational language
 
 ## How It Works
 
 ```
-Telegram → Claude AI → Notion
-    ↑                     ↓
+Telegram → Claude Agent SDK → Notion
+    ↑                           ↓
     ← Daily/Weekly Digests ←
 ```
 
 1. **Capture**: Send messages, URLs, or PDFs to your Telegram bot
-2. **Analyze**: Claude AI categorizes and extracts insights
+2. **Analyze**: Claude Agent autonomously categorizes and extracts insights
 3. **Store**: Structured data saved to Notion database
 4. **Review**: Automated daily briefs and weekly summaries
 
@@ -22,8 +35,7 @@ Telegram → Claude AI → Notion
 | **Smart Categorization** | Auto-categorize into People, Research, Links, or Tasks |
 | **Quick Prefixes** | `t:` `p:` `r:` `l:` for instant categorization |
 | **URL Analysis** | Auto-fetch and summarize articles/papers |
-| **PDF Processing** | Extract and analyze uploaded documents |
-| **Deep Paper Analysis** | Comprehensive research paper breakdown with Q&A |
+| **Deep Paper Analysis** | Comprehensive research paper breakdown |
 | **Knowledge Query** | Ask questions about your saved knowledge |
 | **Daily Digest** | Morning briefing at 8:00 AM |
 | **Weekly Summary** | Week review on Sunday 6:00 PM |
@@ -32,6 +44,7 @@ Telegram → Claude AI → Notion
 
 ### Prerequisites
 - Python 3.9+
+- [Claude Code CLI](https://claude.ai/code) installed
 - [Notion account](https://notion.so) with API access
 - [Telegram account](https://telegram.org)
 - [Anthropic API key](https://console.anthropic.com)
@@ -49,6 +62,9 @@ conda activate second-brain
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Install Claude Code CLI (required for Agent SDK)
+curl -fsSL https://claude.ai/install.sh | bash
 
 # Configure environment
 cp .env.example .env
@@ -76,7 +92,7 @@ ANTHROPIC_API_KEY=your_anthropic_api_key
 
 ```bash
 conda activate second-brain
-python bot.py
+python agent_bot.py
 ```
 
 ## Usage
@@ -95,104 +111,67 @@ python bot.py
 ### Commands
 | Command | Description |
 |---------|-------------|
-| `/deep <url>` | Deep analysis of paper/article |
 | `/daily` | Generate today's digest |
 | `/weekly` | Generate weekly summary |
-| `/exit` | Exit paper Q&A mode |
 | `/help` | Show all commands |
-
-### Deep Analysis + Q&A
-```
-You: d: https://arxiv.org/abs/2301.00001
-Bot: [Comprehensive analysis in 3 messages]
-     Paper loaded for Q&A...
-
-You: What's the main algorithm?
-Bot: [Answer based on paper content]
-
-You: /exit
-Bot: Exited paper Q&A mode.
-```
+| `/start` | Welcome message |
 
 ## Architecture
 
 ```
 second-brain/
-├── bot.py              # Main entry point, command routing
-├── config.py           # Environment vars, constants
-├── telegram.py         # Telegram API functions
-├── claude_ai.py        # AI prompts and Claude API
-├── notion.py           # Notion API functions
-├── processors.py       # Message/URL/document processing
-├── query.py            # Knowledge base queries
-├── digest.py           # Daily/weekly summaries
-├── requirements.txt    # Python dependencies
-└── docs/               # Setup guides
+├── agent_bot.py           # Main entry point (Agent SDK)
+├── tools.py               # MCP tools for Notion & Telegram
+├── .claude/
+│   └── skills/
+│       └── SECOND_BRAIN.md  # Agent skill definition
+├── requirements.txt       # Python dependencies
+├── scripts/               # Setup utilities
+├── templates/             # Notion database template
+└── docs/                  # Setup guides
 ```
+
+### Agent SDK Benefits
+- **Autonomous execution**: Claude decides which tools to use
+- **Built-in tools**: WebFetch, file operations, search
+- **MCP integration**: Custom tools via Model Context Protocol
+- **Simplified code**: ~400 lines vs ~1400 lines (direct API)
 
 ## Cloud Deployment Options
 
 ### Option 1: Railway (Recommended)
-Simple deployment with free tier available.
-
 ```bash
-# Install Railway CLI
 npm install -g @railway/cli
-
-# Login and deploy
 railway login
 railway init
 railway up
 ```
-
 Add environment variables in Railway dashboard.
 
 ### Option 2: Render
-Free tier with automatic deploys from GitHub.
-
 1. Connect GitHub repo to [Render](https://render.com)
 2. Create new "Background Worker"
 3. Set build command: `pip install -r requirements.txt`
-4. Set start command: `python bot.py`
+4. Set start command: `python agent_bot.py`
 5. Add environment variables
 
 ### Option 3: Fly.io
-Global deployment with generous free tier.
-
 ```bash
-# Install flyctl
 curl -L https://fly.io/install.sh | sh
-
-# Deploy
 fly launch
 fly secrets set TELEGRAM_BOT_CODE=xxx ANTHROPIC_API_KEY=xxx ...
 fly deploy
 ```
 
-### Option 4: AWS EC2 / DigitalOcean
-For full control, use a small VPS:
-
-```bash
-# On server
-git clone https://github.com/prashantkul/second-brain.git
-cd second-brain
-pip install -r requirements.txt
-
-# Run with systemd or screen
-screen -S secondbrain
-python bot.py
-# Ctrl+A, D to detach
-```
-
-### Option 5: Docker
-
+### Option 4: Docker
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
+RUN curl -fsSL https://claude.ai/install.sh | bash
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
-CMD ["python", "bot.py"]
+CMD ["python", "agent_bot.py"]
 ```
 
 ```bash
@@ -211,13 +190,9 @@ docker run -d --env-file .env second-brain
 - Verify integration has access to database
 - Check database ID is correct (not the page URL)
 
-**Claude API errors?**
-- Verify API key is valid
-- Check you have API credits
-
-**PDF extraction issues?**
-- Scanned PDFs won't work (no OCR)
-- Very large PDFs may be truncated
+**Agent SDK errors?**
+- Ensure Claude Code CLI is installed (`claude --version`)
+- Verify ANTHROPIC_API_KEY is set
 
 ## License
 
