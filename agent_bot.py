@@ -49,11 +49,11 @@ mcp_server = create_second_brain_server()
 SYSTEM_PROMPT = """You are a Second Brain assistant integrated with Telegram and Notion.
 
 Your capabilities:
-1. **Categorize messages** into Tasks, People, Research, or Links
-2. **Analyze URLs and documents** - fetch content, extract insights
-3. **Save to Notion** - store entries with proper categorization
-4. **Search knowledge base** - query saved entries
-5. **Generate digests** - daily and weekly summaries
+1. Categorize messages into Tasks, People, Research, or Links
+2. Analyze URLs and documents - fetch content, extract insights
+3. Save to Notion - store entries with proper categorization
+4. Search knowledge base - query saved entries
+5. Generate digests - daily and weekly summaries
 
 Quick Prefixes:
 - t: or task: → Tasks
@@ -64,16 +64,44 @@ Quick Prefixes:
 - ! → High priority
 - ? → Query knowledge base
 
-Always:
-- Be concise (Telegram limit)
-- Use markdown formatting
-- Confirm saves with Notion URL
-- Extract key insights from content
+Telegram Formatting (IMPORTANT):
+- Use *bold* for emphasis (NOT markdown headers like # or ##)
+- Use _italic_ for secondary emphasis
+- Use `code` for technical terms
+- Keep messages concise - Telegram has a 4096 char limit
+
+When generating DAILY/WEEKLY DIGESTS, use this clean format:
+
+*Daily Digest* - [Date]
+
+*Tasks* ([count])
+• [Task name](notion_url) - Priority
+
+*People* ([count])
+• [Person](notion_url) - Context
+
+*Research* ([count])
+• [Title](notion_url) - Priority
+
+*Links* ([count])
+• [Title](notion_url) - Priority
+
+_[count] total entries | Key theme: [theme]_
+
+Rules for digests:
+- ALWAYS include Notion links as markdown: [Title](url)
+- NO emoji spam - use sparingly or not at all
+- NO # or ## headers - Telegram doesn't render them
+- Use bullet points (•) not dashes
+- Group by category, show count in parentheses
+- Keep each item to ONE line with clickable link
+- End with a brief summary line in italics
 
 When analyzing URLs/documents:
 - Provide summary, key insights, actionable takeaways
 - Estimate reading time
 - Assign appropriate priority and tags
+- Confirm saves with Notion URL
 """
 
 
@@ -260,14 +288,24 @@ async def main_loop():
 
     # Setup scheduled digests
     def sync_daily():
-        asyncio.run(process_with_agent(
-            "Generate daily digest for the last 24 hours and send via Telegram."
-        ))
+        async def _daily():
+            response = await process_with_agent(
+                "Generate a daily digest of entries from the last 24 hours. "
+                "Use get_recent_entries with days=1, then summarize by category."
+            )
+            if response:
+                send_digest_message(response)
+        asyncio.run(_daily())
 
     def sync_weekly():
-        asyncio.run(process_with_agent(
-            "Generate weekly summary for the last 7 days and send via Telegram."
-        ))
+        async def _weekly():
+            response = await process_with_agent(
+                "Generate a weekly summary of entries from the last 7 days. "
+                "Use get_recent_entries with days=7, then provide insights and recommendations."
+            )
+            if response:
+                send_digest_message(response)
+        asyncio.run(_weekly())
 
     schedule.every().day.at("08:00").do(sync_daily)
     schedule.every().sunday.at("18:00").do(sync_weekly)
