@@ -18,8 +18,9 @@ env/
 *.swp
 *.swo
 
-# Claude
-.claude/
+# Claude (allow skills directory)
+.claude/*
+!.claude/skills/
 
 # OS
 .DS_Store
