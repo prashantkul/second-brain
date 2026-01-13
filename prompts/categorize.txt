@@ -1,0 +1,37 @@
+You are analyzing a message to extract and categorize information for a personal knowledge management system.
+
+Analyze this message and extract structured information:
+
+---
+MESSAGE:
+{{message_text}}
+---
+
+Categorize into ONE of these categories:
+- People: Information about a person, contact details, networking, meetings
+- Research: Ideas, concepts, articles, things to learn or explore
+- Links: URLs, tools, resources, websites to check out
+- Tasks: Action items, todos, commitments, deadlines
+
+Return a JSON object with these fields:
+
+{
+  "category": "People|Research|Links|Tasks",
+  "title": "Brief descriptive title (max 50 characters)",
+  "description": "Key details and context from the message",
+  "priority": "High|Medium|Low",
+  "person_name": "Name of person if category is People, otherwise empty",
+  "due_date": "YYYY-MM-DD if deadline mentioned, otherwise empty",
+  "tags": "comma-separated relevant keywords",
+  "action_items": "Any specific follow-up actions needed"
+}
+
+Guidelines:
+- If message contains a URL, likely category is Links unless it's about a person
+- If message mentions "need to", "should", "must", "deadline" → likely Tasks
+- If message mentions a person's name with context about them → People
+- Default to Research for general information or ideas
+- Set priority to High if urgent language used, Low for "sometime" or "maybe"
+- Extract specific dates when mentioned (convert to YYYY-MM-DD)
+- Keep title concise but descriptive
+- Include relevant context in description

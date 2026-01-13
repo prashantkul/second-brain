@@ -1,0 +1,86 @@
+{
+  "database_name": "Second Brain",
+  "description": "Personal knowledge management - People, Research, Links, Tasks",
+  "properties": {
+    "Title": {
+      "type": "title",
+      "description": "Main entry name/title"
+    },
+    "Category": {
+      "type": "select",
+      "options": [
+        { "name": "People", "color": "blue" },
+        { "name": "Research", "color": "purple" },
+        { "name": "Links", "color": "green" },
+        { "name": "Tasks", "color": "orange" }
+      ]
+    },
+    "Description": {
+      "type": "rich_text",
+      "description": "Full content, notes, and context"
+    },
+    "Source": {
+      "type": "url",
+      "description": "Original source URL or Google Chat link"
+    },
+    "Status": {
+      "type": "select",
+      "options": [
+        { "name": "New", "color": "gray" },
+        { "name": "In Progress", "color": "yellow" },
+        { "name": "Done", "color": "green" }
+      ]
+    },
+    "Priority": {
+      "type": "select",
+      "options": [
+        { "name": "High", "color": "red" },
+        { "name": "Medium", "color": "yellow" },
+        { "name": "Low", "color": "gray" }
+      ]
+    },
+    "Due Date": {
+      "type": "date",
+      "description": "Deadline for tasks"
+    },
+    "Person Name": {
+      "type": "rich_text",
+      "description": "Name of person (for People category)"
+    },
+    "Tags": {
+      "type": "multi_select",
+      "options": [
+        { "name": "follow-up", "color": "red" },
+        { "name": "networking", "color": "blue" },
+        { "name": "learning", "color": "purple" },
+        { "name": "tool", "color": "green" },
+        { "name": "article", "color": "orange" },
+        { "name": "idea", "color": "pink" },
+        { "name": "urgent", "color": "red" },
+        { "name": "reference", "color": "gray" }
+      ]
+    },
+    "Created": {
+      "type": "created_time"
+    }
+  },
+  "views": {
+    "All Entries": {
+      "type": "table",
+      "sort": [{ "property": "Created", "direction": "descending" }]
+    },
+    "By Category": {
+      "type": "board",
+      "group_by": "Category"
+    },
+    "Tasks": {
+      "type": "table",
+      "filter": { "property": "Category", "equals": "Tasks" },
+      "sort": [{ "property": "Due Date", "direction": "ascending" }]
+    },
+    "People": {
+      "type": "gallery",
+      "filter": { "property": "Category", "equals": "People" }
+    }
+  }
+}
