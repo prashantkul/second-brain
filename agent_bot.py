@@ -12,6 +12,7 @@ import os
 import asyncio
 import logging
 from pathlib import Path
+from datetime import datetime, timedelta
 
 import requests
 import schedule
@@ -41,6 +42,15 @@ logger = logging.getLogger("second_brain_agent")
 
 # Track last processed message
 last_update_id = 0
+
+# Deep analysis Q&A cache
+deep_analysis_cache = {
+    "active": False,
+    "title": None,
+    "url": None,
+    "summary": None,
+    "timestamp": None
+}
 
 # Create MCP server
 mcp_server = create_second_brain_server()
@@ -161,7 +171,7 @@ async def process_with_agent(message_text: str, context: str = "") -> str:
         mcp_servers={"second-brain": mcp_server},
         allowed_tools=[
             "mcp__second-brain__save_to_notion",
-            "mcp__second-brain__save_document_to_notion",
+            "mcp__second-brain__save_deep_analysis",
             "mcp__second-brain__search_notion",
             "mcp__second-brain__get_recent_entries",
             "mcp__second-brain__send_telegram_message",
@@ -169,6 +179,7 @@ async def process_with_agent(message_text: str, context: str = "") -> str:
         ],
         max_turns=10,
         cwd=str(Path(__file__).parent),
+        setting_sources=["project"],  # Load skills from .claude/skills/
     )
 
     response_text = ""
@@ -193,8 +204,61 @@ async def process_with_agent(message_text: str, context: str = "") -> str:
     return response_text
 
 
+def is_qa_mode_active():
+    """Check if Q&A mode is active and not expired (1 hour timeout)."""
+    global deep_analysis_cache
+    if not deep_analysis_cache["active"]:
+        return False
+    if deep_analysis_cache["timestamp"]:
+        elapsed = datetime.now() - deep_analysis_cache["timestamp"]
+        if elapsed > timedelta(hours=1):
+            deep_analysis_cache["active"] = False
+            return False
+    return True
+
+
+def exit_qa_mode():
+    """Exit Q&A mode."""
+    global deep_analysis_cache
+    deep_analysis_cache = {
+        "active": False,
+        "title": None,
+        "url": None,
+        "summary": None,
+        "timestamp": None
+    }
+
+
+def enter_qa_mode(title: str, url: str, summary: str):
+    """Enter Q&A mode for a paper."""
+    global deep_analysis_cache
+    deep_analysis_cache = {
+        "active": True,
+        "title": title,
+        "url": url,
+        "summary": summary,
+        "timestamp": datetime.now()
+    }
+
+
+def should_exit_qa_mode(message_text: str) -> bool:
+    """Check if message should exit Q&A mode."""
+    # Commands exit Q&A
+    if message_text.startswith("/"):
+        return True
+    # Prefixes exit Q&A
+    prefixes = ("t:", "task:", "p:", "person:", "r:", "research:", "l:", "link:", "d:", "deep:", "!")
+    if message_text.lower().startswith(prefixes):
+        return True
+    # New URL exits Q&A
+    if "http://" in message_text or "https://" in message_text:
+        return True
+    return False
+
+
 async def handle_message(message_text: str):
     """Handle an incoming Telegram message."""
+    global deep_analysis_cache
     logger.info(f"Processing: {message_text[:50]}...")
 
     # Handle commands
@@ -211,11 +275,12 @@ async def handle_message(message_text: str):
 *Commands:*
 `/daily` - Today's digest
 `/weekly` - Weekly summary
+`/exit` - Exit paper Q&A mode
 `/help` - This message
 
 *Features:*
 - Send URLs → Auto-analyze
-- Send PDFs → Extract & summarize
+- `d:` URL → Deep paper analysis + Q&A
 - Ask questions about your knowledge
 
 *Examples:*
@@ -226,7 +291,17 @@ async def handle_message(message_text: str):
             send_capture_message(help_text)
             return
 
+        elif cmd == "/exit":
+            if is_qa_mode_active():
+                title = deep_analysis_cache.get("title", "paper")
+                exit_qa_mode()
+                send_capture_message(f"_Exited Q&A mode for: {title}_")
+            else:
+                send_capture_message("_Not in Q&A mode._")
+            return
+
         elif cmd in ["/daily", "/today"]:
+            exit_qa_mode()  # Exit Q&A mode
             send_capture_message("Generating daily digest...")
             response = await process_with_agent(
                 "Generate a daily digest of entries from the last 24 hours. "
@@ -236,6 +311,7 @@ async def handle_message(message_text: str):
             return
 
         elif cmd in ["/weekly", "/week"]:
+            exit_qa_mode()  # Exit Q&A mode
             send_capture_message("Generating weekly summary...")
             response = await process_with_agent(
                 "Generate a weekly summary of entries from the last 7 days. "
@@ -252,19 +328,76 @@ async def handle_message(message_text: str):
             )
             return
 
+    # Check if in Q&A mode and should stay
+    if is_qa_mode_active() and not should_exit_qa_mode(message_text):
+        # This is a follow-up question about the paper
+        send_capture_message("_Answering from paper context..._")
+        context = (
+            f"The user is in Q&A mode for a paper they just analyzed.\n"
+            f"Paper: {deep_analysis_cache['title']}\n"
+            f"URL: {deep_analysis_cache['url']}\n"
+            f"Summary: {deep_analysis_cache['summary']}\n\n"
+            f"Answer their question based on the paper. If needed, use WebFetch to get more details from the URL.\n"
+            f"End with: _Still in Q&A mode. Ask another question or /exit._"
+        )
+        response = await process_with_agent(message_text, context)
+        if response:
+            send_capture_message(response)
+        return
+
+    # Exit Q&A mode if needed
+    if is_qa_mode_active() and should_exit_qa_mode(message_text):
+        exit_qa_mode()
+
     # Process with agent
     send_capture_message("Processing...")
 
     # Determine context based on prefix
     context = ""
+    is_deep_analysis = False
+
     if message_text.startswith("?"):
         context = "The user is querying their knowledge base. Search Notion and synthesize an answer."
     elif message_text.lower().startswith(("d:", "deep:")):
-        context = "The user wants deep paper/document analysis. Provide comprehensive academic and practical breakdown."
+        is_deep_analysis = True
+        # Extract URL from message
+        url = ""
+        for word in message_text.split():
+            if word.startswith("http"):
+                url = word
+                break
+        context = (
+            "The user wants DEEP ANALYSIS of this paper/article. "
+            "Use the deep-analysis skill format. "
+            "After analysis, save to Notion using save_document_to_notion."
+        )
     elif "http" in message_text:
         context = "The user shared a URL. Fetch the content, analyze it, and save to Notion with proper categorization."
 
     response = await process_with_agent(message_text, context)
+
+    # If deep analysis, enter Q&A mode
+    if is_deep_analysis and response:
+        # Extract title from response (first line after "Title:")
+        title = "Analyzed Paper"
+        url = ""
+        for word in message_text.split():
+            if word.startswith("http"):
+                url = word
+                break
+
+        # Try to extract title from response
+        if "*Title:*" in response:
+            try:
+                title_line = response.split("*Title:*")[1].split("\n")[0].strip()
+                title = title_line
+            except:
+                pass
+
+        # Enter Q&A mode
+        summary = response[:500] if response else ""
+        enter_qa_mode(title, url, summary)
+        logger.info(f"Entered Q&A mode for: {title}")
 
     # Send response (agent may have already sent via tool)
     if response and not response.startswith("Message sent"):

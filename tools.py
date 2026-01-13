@@ -35,18 +35,22 @@ def _notion_headers():
 
 @tool(
     "save_to_notion",
-    "Save an entry to the Second Brain Notion database",
+    "Save a QUICK entry to Notion. For simple saves only - NOT for deep paper analysis (use save_deep_analysis for that)",
     {
         "title": str,
         "category": str,  # People, Research, Links, Tasks
         "description": str,
         "priority": str,  # High, Medium, Low
-        "tags": list,
+        "tags": str,  # Comma-separated tags like "AI, machine learning, NLP"
         "source_url": str,
     }
 )
 async def save_to_notion(args: dict[str, Any]) -> dict[str, Any]:
     """Save a new entry to Notion."""
+    import logging
+    logger = logging.getLogger("second_brain_agent")
+    logger.info(f"save_to_notion called (NOT deep analysis) with title: {args.get('title', 'N/A')}")
+
     url = "https://api.notion.com/v1/pages"
 
     properties = {
@@ -57,8 +61,12 @@ async def save_to_notion(args: dict[str, Any]) -> dict[str, Any]:
         "Priority": {"select": {"name": args.get("priority", "Medium")}},
     }
 
-    if args.get("tags"):
-        properties["Tags"] = {"multi_select": [{"name": tag} for tag in args["tags"][:5]]}
+    # Handle tags - can be string or list
+    tags = args.get("tags", [])
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+    if tags:
+        properties["Tags"] = {"multi_select": [{"name": tag[:50]} for tag in tags[:5]]}
 
     if args.get("source_url"):
         properties["Source"] = {"url": args["source_url"]}
@@ -92,79 +100,157 @@ async def save_to_notion(args: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
-    "save_document_to_notion",
-    "Save a document/paper analysis to Notion with rich content",
+    "save_deep_analysis",
+    "REQUIRED for d: prefix deep analysis. Saves comprehensive paper analysis with structured sections to Notion page body",
     {
         "title": str,
-        "summary": str,
-        "key_insights": list,
-        "actionable_takeaways": list,
+        "authors": str,
+        "paper_type": str,
+        "problem": str,
+        "methodology": str,
+        "key_contributions": list,
+        "results": str,
+        "limitations": list,
+        "tldr": str,
+        "why_it_matters": str,
+        "implementation_complexity": str,
+        "use_cases": list,
+        "reading_time": str,
+        "prerequisites": str,
         "priority": str,
-        "tags": list,
+        "tags": str,
         "source_url": str,
-        "time_estimates": dict,
+        "questions_to_explore": list,
     }
 )
-async def save_document_to_notion(args: dict[str, Any]) -> dict[str, Any]:
-    """Save document analysis with rich page content."""
+async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
+    """Save deep document analysis with full structured content."""
+    import logging
+    logger = logging.getLogger("second_brain_agent")
+    logger.info(f"save_deep_analysis called with title: {args.get('title', 'N/A')}")
+
     url = "https://api.notion.com/v1/pages"
+
+    # Build description from TL;DR and problem
+    description = f"{args.get('tldr', '')} | Problem: {args.get('problem', '')}"[:2000]
 
     properties = {
         "Name": {"title": [{"text": {"content": args.get("title", "Untitled")}}]},
         "Category": {"select": {"name": "Research"}},
-        "Description": {"rich_text": [{"text": {"content": args.get("summary", "")[:2000]}}]},
+        "Description": {"rich_text": [{"text": {"content": description}}]},
         "Status": {"select": {"name": "New"}},
         "Priority": {"select": {"name": args.get("priority", "Medium")}},
     }
 
-    if args.get("tags"):
-        properties["Tags"] = {"multi_select": [{"name": tag} for tag in args["tags"][:5]]}
+    # Handle tags - can be string or list
+    tags = args.get("tags", [])
+    if isinstance(tags, str):
+        # Split by comma and clean up
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+    if tags:
+        properties["Tags"] = {"multi_select": [{"name": tag[:50]} for tag in tags[:5]]}
 
     if args.get("source_url"):
         properties["Source"] = {"url": args["source_url"]}
 
-    # Build page content
+    # Build rich page content
     children = []
 
-    # Summary
-    children.append({
-        "object": "block",
-        "type": "heading_2",
-        "heading_2": {"rich_text": [{"type": "text", "text": {"content": "Summary"}}]}
-    })
-    children.append({
-        "object": "block",
-        "type": "paragraph",
-        "paragraph": {"rich_text": [{"type": "text", "text": {"content": args.get("summary", "")}}]}
-    })
-
-    # Key Insights
-    if args.get("key_insights"):
+    def add_heading(text):
         children.append({
             "object": "block",
             "type": "heading_2",
-            "heading_2": {"rich_text": [{"type": "text", "text": {"content": "Key Insights"}}]}
+            "heading_2": {"rich_text": [{"type": "text", "text": {"content": text}}]}
         })
-        for insight in args["key_insights"]:
+
+    def add_paragraph(text):
+        if text:
+            children.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"type": "text", "text": {"content": str(text)[:2000]}}]}
+            })
+
+    def add_bullet(text):
+        if text:
             children.append({
                 "object": "block",
                 "type": "bulleted_list_item",
-                "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": insight}}]}
+                "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": str(text)[:2000]}}]}
             })
 
-    # Actionable Takeaways
-    if args.get("actionable_takeaways"):
+    def add_divider():
+        children.append({"object": "block", "type": "divider", "divider": {}})
+
+    # TL;DR at top
+    add_heading("TL;DR")
+    add_paragraph(args.get("tldr", ""))
+
+    add_divider()
+
+    # Meta info
+    add_heading("Meta")
+    add_paragraph(f"Authors: {args.get('authors', 'Unknown')}")
+    add_paragraph(f"Type: {args.get('paper_type', 'Research paper')}")
+    add_paragraph(f"Reading Time: {args.get('reading_time', 'N/A')}")
+    add_paragraph(f"Prerequisites: {args.get('prerequisites', 'N/A')}")
+
+    add_divider()
+
+    # Academic Analysis
+    add_heading("Academic Analysis")
+
+    add_paragraph(f"*Problem:* {args.get('problem', '')}")
+    add_paragraph(f"*Methodology:* {args.get('methodology', '')}")
+
+    if args.get("key_contributions"):
         children.append({
             "object": "block",
-            "type": "heading_2",
-            "heading_2": {"rich_text": [{"type": "text", "text": {"content": "Actionable Takeaways"}}]}
+            "type": "paragraph",
+            "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Key Contributions:"}, "annotations": {"bold": True}}]}
         })
-        for action in args["actionable_takeaways"]:
-            children.append({
-                "object": "block",
-                "type": "to_do",
-                "to_do": {"rich_text": [{"type": "text", "text": {"content": action}}], "checked": False}
-            })
+        for item in args["key_contributions"][:5]:  # Limit to 5
+            add_bullet(item)
+
+    add_paragraph(f"*Results:* {args.get('results', '')}")
+
+    if args.get("limitations"):
+        children.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Limitations:"}, "annotations": {"bold": True}}]}
+        })
+        for item in args["limitations"][:3]:  # Limit to 3
+            add_bullet(item)
+
+    add_divider()
+
+    # Practical Analysis
+    add_heading("Practical Analysis")
+    add_paragraph(f"*Why It Matters:* {args.get('why_it_matters', '')}")
+    add_paragraph(f"*Implementation Complexity:* {args.get('implementation_complexity', '')}")
+
+    if args.get("use_cases"):
+        children.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Use Cases:"}, "annotations": {"bold": True}}]}
+        })
+        for item in args["use_cases"][:5]:  # Limit to 5
+            add_bullet(item)
+
+    add_divider()
+
+    # Questions to Explore
+    if args.get("questions_to_explore"):
+        add_heading("Questions to Explore")
+        for q in args["questions_to_explore"][:3]:  # Limit to 3
+            add_bullet(q)
+
+    # Safety check: Notion allows max 100 children blocks
+    if len(children) > 100:
+        logger.warning(f"Truncating children from {len(children)} to 100 blocks")
+        children = children[:100]
 
     payload = {
         "parent": {"database_id": NOTION_DATABASE_ID},
@@ -173,23 +259,28 @@ async def save_document_to_notion(args: dict[str, Any]) -> dict[str, Any]:
     }
 
     try:
-        response = requests.post(url, headers=_notion_headers(), json=payload, timeout=15)
+        logger.info(f"Sending to Notion with {len(children)} children blocks")
+        response = requests.post(url, headers=_notion_headers(), json=payload, timeout=30)
+        logger.info(f"Notion response: {response.status_code}")
         if response.status_code == 200:
             result = response.json()
             return {
                 "content": [{
                     "type": "text",
-                    "text": f"Document saved to Notion: {args['title']}\nURL: {result.get('url', 'N/A')}"
+                    "text": f"Deep analysis saved to Notion: {args['title']}\nURL: {result.get('url', 'N/A')}"
                 }]
             }
         else:
+            error_text = response.text[:500]
+            logger.error(f"Notion API error: {response.status_code} - {error_text}")
             return {
                 "content": [{
                     "type": "text",
-                    "text": f"Error saving document: {response.status_code}"
+                    "text": f"Error saving document: {response.status_code} - {error_text}"
                 }]
             }
     except Exception as e:
+        logger.error(f"Exception in save_deep_analysis: {str(e)}")
         return {
             "content": [{"type": "text", "text": f"Error: {str(e)}"}]
         }
@@ -360,7 +451,7 @@ def create_second_brain_server():
         version="1.0.0",
         tools=[
             save_to_notion,
-            save_document_to_notion,
+            save_deep_analysis,
             search_notion,
             get_recent_entries,
             send_telegram_message,
