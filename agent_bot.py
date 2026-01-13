@@ -287,11 +287,13 @@ async def handle_message(message_text: str):
 *Commands:*
 `/daily` - Today's digest
 `/weekly` - Weekly summary
+`/reminders` - View upcoming tasks
 `/exit` - Exit Q&A mode
 `/help` - This message
 
 *Examples:*
-`t: Review proposal by Friday`
+`t: Review proposal by Friday 3pm`
+`t: Call John in 2 hours`
 `d: https://arxiv.org/abs/...`
 `rp: Using LLMs for theorem proving`
 `j: https://lever.co/job/...`
@@ -327,6 +329,18 @@ async def handle_message(message_text: str):
                 "Use get_recent_entries with days=7, then provide insights and recommendations."
             )
             send_digest_message(response)
+            return
+
+        elif cmd == "/reminders":
+            try:
+                from reminders import get_upcoming_tasks_formatted
+                reminders_text = get_upcoming_tasks_formatted()
+                logger.info(f"Reminders text: {reminders_text[:100]}...")
+                send_capture_message(reminders_text)
+                logger.info("Reminders sent successfully")
+            except Exception as e:
+                logger.error(f"Error in /reminders: {e}")
+                send_capture_message(f"Error getting reminders: {str(e)}")
             return
 
         elif cmd == "/start":
@@ -502,6 +516,17 @@ async def main_loop():
 
     schedule.every().day.at("08:00").do(sync_daily)
     schedule.every().sunday.at("18:00").do(sync_weekly)
+
+    # Task reminders - check every 15 minutes
+    def sync_reminders():
+        try:
+            from reminders import check_and_send_reminders
+            check_and_send_reminders()
+        except Exception as e:
+            logger.error(f"Reminder check error: {e}")
+
+    schedule.every(15).minutes.do(sync_reminders)
+    logger.info("Reminder scheduler: checking every 15 minutes")
 
     # Start scheduler thread
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)

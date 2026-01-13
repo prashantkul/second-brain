@@ -29,13 +29,30 @@ def _notion_headers():
     }
 
 
+def strip_markdown(text):
+    """Remove markdown formatting from text."""
+    import re
+    if not text:
+        return text
+    text = str(text)
+    # Remove bold: **text** or __text__
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    # Remove italic: *text* or _text_
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r'(?<!\w)_(.+?)_(?!\w)', r'\1', text)
+    # Remove code: `text`
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    return text.strip()
+
+
 # =============================================================================
 # Notion Tools
 # =============================================================================
 
 @tool(
     "save_to_notion",
-    "Save a QUICK entry to Notion. For simple saves only - NOT for deep paper analysis (use save_deep_analysis for that)",
+    "Save a QUICK entry to Notion. For Tasks with due dates, include due_date in ISO format.",
     {
         "title": str,
         "category": str,  # People, Research, Links, Tasks
@@ -43,6 +60,7 @@ def _notion_headers():
         "priority": str,  # High, Medium, Low
         "tags": str,  # Comma-separated tags like "AI, machine learning, NLP"
         "source_url": str,
+        "due_date": str,  # ISO format for tasks: "2024-01-20T15:00:00"
     }
 )
 async def save_to_notion(args: dict[str, Any]) -> dict[str, Any]:
@@ -70,6 +88,10 @@ async def save_to_notion(args: dict[str, Any]) -> dict[str, Any]:
 
     if args.get("source_url"):
         properties["Source"] = {"url": args["source_url"]}
+
+    # Add due date for tasks
+    if args.get("due_date"):
+        properties["Due Date"] = {"date": {"start": args["due_date"]}}
 
     payload = {
         "parent": {"database_id": NOTION_DATABASE_ID},
@@ -131,8 +153,8 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
 
     url = "https://api.notion.com/v1/pages"
 
-    # Build description from TL;DR and problem
-    description = f"{args.get('tldr', '')} | Problem: {args.get('problem', '')}"[:2000]
+    # Build description from TL;DR and problem (strip markdown)
+    description = strip_markdown(f"{args.get('tldr', '')} | Problem: {args.get('problem', '')}")[:2000]
 
     properties = {
         "Name": {"title": [{"text": {"content": args.get("title", "Untitled")}}]},
@@ -162,22 +184,6 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
             "type": "heading_2",
             "heading_2": {"rich_text": [{"type": "text", "text": {"content": text}}]}
         })
-
-    def strip_markdown(text):
-        """Remove markdown formatting from text."""
-        import re
-        if not text:
-            return text
-        text = str(text)
-        # Remove bold: **text** or __text__
-        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-        text = re.sub(r'__(.+?)__', r'\1', text)
-        # Remove italic: *text* or _text_
-        text = re.sub(r'\*(.+?)\*', r'\1', text)
-        text = re.sub(r'(?<!\w)_(.+?)_(?!\w)', r'\1', text)
-        # Remove code: `text`
-        text = re.sub(r'`(.+?)`', r'\1', text)
-        return text.strip()
 
     def add_paragraph(text):
         if text:
@@ -223,7 +229,7 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
             "type": "paragraph",
             "paragraph": {"rich_text": [
                 {"type": "text", "text": {"content": "Problem: "}, "annotations": {"bold": True}},
-                {"type": "text", "text": {"content": str(args.get('problem', ''))[:1900]}}
+                {"type": "text", "text": {"content": strip_markdown(str(args.get('problem', '')))[:1900]}}
             ]}
         })
 
@@ -234,7 +240,7 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
             "type": "paragraph",
             "paragraph": {"rich_text": [
                 {"type": "text", "text": {"content": "Methodology: "}, "annotations": {"bold": True}},
-                {"type": "text", "text": {"content": str(args.get('methodology', ''))[:1900]}}
+                {"type": "text", "text": {"content": strip_markdown(str(args.get('methodology', '')))[:1900]}}
             ]}
         })
 
@@ -279,7 +285,7 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
             "type": "paragraph",
             "paragraph": {"rich_text": [
                 {"type": "text", "text": {"content": "Results: "}, "annotations": {"bold": True}},
-                {"type": "text", "text": {"content": str(args.get('results', ''))[:1900]}}
+                {"type": "text", "text": {"content": strip_markdown(str(args.get('results', '')))[:1900]}}
             ]}
         })
 
@@ -305,7 +311,7 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
             "type": "paragraph",
             "paragraph": {"rich_text": [
                 {"type": "text", "text": {"content": "Why It Matters: "}, "annotations": {"bold": True}},
-                {"type": "text", "text": {"content": str(args.get('why_it_matters', ''))[:1900]}}
+                {"type": "text", "text": {"content": strip_markdown(str(args.get('why_it_matters', '')))[:1900]}}
             ]}
         })
 
@@ -316,7 +322,7 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
             "type": "paragraph",
             "paragraph": {"rich_text": [
                 {"type": "text", "text": {"content": "Implementation: "}, "annotations": {"bold": True}},
-                {"type": "text", "text": {"content": str(args.get('implementation_complexity', ''))[:1900]}}
+                {"type": "text", "text": {"content": strip_markdown(str(args.get('implementation_complexity', '')))[:1900]}}
             ]}
         })
 

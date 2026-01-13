@@ -9,6 +9,9 @@ Usage:
     python test_harness.py test-agent "What is 2+2?"
     python test_harness.py test-jobs "https://job-url"
     python test_harness.py test-deep "https://arxiv.org/abs/..."
+    python test_harness.py test-reminder "t: Call John in 2 hours"
+    python test_harness.py parse-date "by Friday 3pm"
+    python test_harness.py show-reminders
     python test_harness.py check-response
 """
 
@@ -141,6 +144,52 @@ async def test_deep(url: str) -> str:
     return await test_agent_directly(message)
 
 
+async def test_reminder(message: str) -> str:
+    """Test task with due date."""
+    if not message.lower().startswith("t:"):
+        message = f"t: {message}"
+    return await test_agent_directly(message)
+
+
+def parse_date_test(text: str):
+    """Test date parsing without saving."""
+    sys.path.insert(0, str(Path(__file__).parent))
+    from reminders import parse_due_date, format_due_date
+
+    print(f"Input: '{text}'")
+    print("-" * 40)
+
+    due_date, clean_text = parse_due_date(text)
+
+    if due_date:
+        print(f"✓ Due date: {due_date}")
+        print(f"  Formatted: {format_due_date(due_date)}")
+        print(f"  Clean text: '{clean_text}'")
+    else:
+        print("✗ No date found")
+        print(f"  Original text: '{clean_text}'")
+
+
+def show_reminders():
+    """Show upcoming tasks with due dates."""
+    sys.path.insert(0, str(Path(__file__).parent))
+    from reminders import get_upcoming_tasks_formatted, get_tasks_due_soon
+
+    # Show formatted output
+    print(get_upcoming_tasks_formatted())
+    print()
+
+    # Show raw data
+    tasks = get_tasks_due_soon(hours=168)  # Next 7 days
+    if tasks:
+        print("-" * 40)
+        print(f"Raw data ({len(tasks)} tasks):")
+        for task in tasks:
+            print(f"  • {task['title']}")
+            print(f"    Due: {task['due_date']}")
+            print(f"    ID: {task['id'][:8]}...")
+
+
 async def cleanup_notion(hours: int = 1) -> int:
     """Delete test entries from Notion created in the last N hours."""
     sys.path.insert(0, str(Path(__file__).parent))
@@ -184,6 +233,9 @@ Commands:
   test-agent <message>    Test agent processing directly
   test-jobs <url/text>    Test job analysis (j: prefix)
   test-deep <url>         Test deep analysis (d: prefix)
+  test-reminder <task>    Test task with due date (t: prefix)
+  parse-date <text>       Test date parsing without saving
+  show-reminders          Show upcoming tasks with due dates
   cleanup [hours]         Delete test entries from Notion (default: 1 hour)
 
 Examples:
@@ -191,6 +243,9 @@ Examples:
   python test_harness.py test-agent "? What tasks do I have?"
   python test_harness.py test-jobs "https://lever.co/job/..."
   python test_harness.py test-deep "https://arxiv.org/abs/2403.05181"
+  python test_harness.py test-reminder "Call John in 2 hours"
+  python test_harness.py parse-date "by Friday 3pm"
+  python test_harness.py show-reminders
   python test_harness.py check-response
   python test_harness.py cleanup 2
 """)
@@ -229,6 +284,17 @@ def main():
     elif command == "test-deep" and len(sys.argv) > 2:
         url = sys.argv[2]
         asyncio.run(test_deep(url))
+
+    elif command == "test-reminder" and len(sys.argv) > 2:
+        message = " ".join(sys.argv[2:])
+        asyncio.run(test_reminder(message))
+
+    elif command == "parse-date" and len(sys.argv) > 2:
+        text = " ".join(sys.argv[2:])
+        parse_date_test(text)
+
+    elif command == "show-reminders":
+        show_reminders()
 
     elif command == "cleanup":
         hours = int(sys.argv[2]) if len(sys.argv) > 2 else 1

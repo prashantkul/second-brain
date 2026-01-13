@@ -45,6 +45,42 @@ Always include:
 - Description with key details
 - Relevant tags
 - Source URL if applicable
+- **Due date** (for Tasks only, if specified)
+
+## Task Due Dates
+
+When saving a task, look for due date/time expressions in the message:
+
+| Pattern | Example | Interpretation |
+|---------|---------|----------------|
+| "by [day/date]" | "by Friday", "by Jan 20" | Due on that date |
+| "at [time]" | "at 3pm", "at 15:00" | Due today at time |
+| "in [duration]" | "in 2 hours", "in 3 days" | Relative to now |
+| "tomorrow" | "tomorrow morning" | Next day |
+| "next [day]" | "next Monday" | Coming week |
+
+**If a due date is found:**
+1. Parse the date/time to ISO format (e.g., "2024-01-20T15:00:00")
+2. Include `due_date` parameter when calling save_to_notion
+3. Confirm the due date in your response
+
+**Example:**
+```
+Input: "t: Review proposal by Friday 3pm"
+
+Action: save_to_notion(
+  title="Review proposal",
+  category="Tasks",
+  priority="Medium",
+  due_date="2024-01-17T15:00:00"
+)
+
+Response: "✓ Task saved: Review proposal
+📅 Due: Friday Jan 17, 3:00 PM
+🔔 Reminders: 1 day before, 1 hour before, at due time"
+```
+
+**Reminders are automatic:** The bot will send reminders 1 day before, 1 hour before, and at the due time.
 
 ## When Answering Queries (? prefix)
 
