@@ -70,6 +70,7 @@ Quick Prefixes:
 - p: or person: → People
 - r: or research: → Research
 - l: or link: → Links
+- j: or job: → Jobs (analyze job posting, extract requirements, suggest skills)
 - d: or deep: → Deep paper analysis
 - ! → High priority
 - ? → Query knowledge base
@@ -270,7 +271,7 @@ async def handle_message(message_text: str):
 
 *Prefixes:*
 `t:` Task | `p:` Person | `r:` Research | `l:` Link
-`d:` Deep analysis | `!` High priority | `?` Query
+`j:` Job analysis | `d:` Deep analysis | `!` High priority | `?` Query
 
 *Commands:*
 `/daily` - Today's digest
@@ -358,6 +359,12 @@ async def handle_message(message_text: str):
 
     if message_text.startswith("?"):
         context = "The user is querying their knowledge base. Search Notion and synthesize an answer."
+    elif message_text.lower().startswith(("j:", "job:")):
+        context = (
+            "The user wants to analyze a JOB POSTING. Use the job-analysis skill. "
+            "Extract: company, role, key requirements, required skills, nice-to-have skills. "
+            "Then suggest skills to develop based on gaps. Save to Notion with category 'Jobs'."
+        )
     elif message_text.lower().startswith(("d:", "deep:")):
         is_deep_analysis = True
         # Extract URL from message

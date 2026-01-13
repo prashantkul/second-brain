@@ -2,6 +2,19 @@
 
 A personal knowledge management system powered by Claude Agent SDK. Capture thoughts, analyze research papers, and query your knowledge base - all through Telegram.
 
+## Introduction
+
+Second Brain is a Telegram bot that serves as your intelligent knowledge companion. It captures thoughts, links, research, and tasks directly from Telegram conversations and stores everything in Notion with automatic categorization. Built on the Claude Agent SDK with a skills-based architecture, it goes beyond simple note-taking to provide deep analysis of research papers, job posting insights with personalized skill recommendations, and automated daily and weekly digests to keep you informed.
+
+## Benefits
+
+- **Frictionless Capture**: Send anything to Telegram and let the AI handle categorization and storage
+- **Intelligent Organization**: Automatic tagging and structuring in Notion eliminates manual filing
+- **Research Acceleration**: Deep analysis extracts key insights from papers and articles
+- **Career Intelligence**: Job posting analysis identifies skill gaps and growth opportunities
+- **Proactive Recall**: Scheduled digests surface relevant knowledge when you need it
+- **Natural Interaction**: Query your entire knowledge base using conversational language
+
 ## How It Works
 
 ```

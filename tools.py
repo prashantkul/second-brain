@@ -163,12 +163,28 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
             "heading_2": {"rich_text": [{"type": "text", "text": {"content": text}}]}
         })
 
+    def strip_markdown(text):
+        """Remove markdown formatting from text."""
+        import re
+        if not text:
+            return text
+        text = str(text)
+        # Remove bold: **text** or __text__
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        text = re.sub(r'__(.+?)__', r'\1', text)
+        # Remove italic: *text* or _text_
+        text = re.sub(r'\*(.+?)\*', r'\1', text)
+        text = re.sub(r'(?<!\w)_(.+?)_(?!\w)', r'\1', text)
+        # Remove code: `text`
+        text = re.sub(r'`(.+?)`', r'\1', text)
+        return text.strip()
+
     def add_paragraph(text):
         if text:
             children.append({
                 "object": "block",
                 "type": "paragraph",
-                "paragraph": {"rich_text": [{"type": "text", "text": {"content": str(text)[:2000]}}]}
+                "paragraph": {"rich_text": [{"type": "text", "text": {"content": strip_markdown(text)[:2000]}}]}
             })
 
     def add_bullet(text):
@@ -176,7 +192,7 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
             children.append({
                 "object": "block",
                 "type": "bulleted_list_item",
-                "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": str(text)[:2000]}}]}
+                "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": strip_markdown(text)[:2000]}}]}
             })
 
     def add_divider():
@@ -200,51 +216,128 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
     # Academic Analysis
     add_heading("Academic Analysis")
 
-    add_paragraph(f"*Problem:* {args.get('problem', '')}")
-    add_paragraph(f"*Methodology:* {args.get('methodology', '')}")
+    # Problem with bold label
+    if args.get('problem'):
+        children.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": [
+                {"type": "text", "text": {"content": "Problem: "}, "annotations": {"bold": True}},
+                {"type": "text", "text": {"content": str(args.get('problem', ''))[:1900]}}
+            ]}
+        })
 
-    if args.get("key_contributions"):
+    # Methodology with bold label
+    if args.get('methodology'):
+        children.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": [
+                {"type": "text", "text": {"content": "Methodology: "}, "annotations": {"bold": True}},
+                {"type": "text", "text": {"content": str(args.get('methodology', ''))[:1900]}}
+            ]}
+        })
+
+    # Helper to parse list items from various formats
+    def parse_list_items(items):
+        import re
+        if isinstance(items, list):
+            return items
+        if isinstance(items, str):
+            # Try newline split first
+            if "\n" in items:
+                return [i.strip() for i in items.split("\n") if i.strip()]
+            # Try numbered format: "1) item 2) item" or "1. item 2. item"
+            numbered = re.split(r'\d+[\)\.]\s*', items)
+            numbered = [i.strip() for i in numbered if i.strip()]
+            if len(numbered) > 1:
+                return numbered
+            # Try bullet format: "• item • item" or "- item - item"
+            bulleted = re.split(r'[•\-]\s*', items)
+            bulleted = [i.strip() for i in bulleted if i.strip()]
+            if len(bulleted) > 1:
+                return bulleted
+            # Return as single item if no pattern matched
+            return [items.strip()] if items.strip() else []
+        return []
+
+    # Handle key_contributions - can be string or list in various formats
+    key_contributions = parse_list_items(args.get("key_contributions", []))
+    if key_contributions:
         children.append({
             "object": "block",
             "type": "paragraph",
             "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Key Contributions:"}, "annotations": {"bold": True}}]}
         })
-        for item in args["key_contributions"][:5]:  # Limit to 5
+        for item in key_contributions[:7]:  # Limit to 7
             add_bullet(item)
 
-    add_paragraph(f"*Results:* {args.get('results', '')}")
+    # Results with bold label
+    if args.get('results'):
+        children.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": [
+                {"type": "text", "text": {"content": "Results: "}, "annotations": {"bold": True}},
+                {"type": "text", "text": {"content": str(args.get('results', ''))[:1900]}}
+            ]}
+        })
 
-    if args.get("limitations"):
+    # Handle limitations - can be string or list in various formats
+    limitations = parse_list_items(args.get("limitations", []))
+    if limitations:
         children.append({
             "object": "block",
             "type": "paragraph",
             "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Limitations:"}, "annotations": {"bold": True}}]}
         })
-        for item in args["limitations"][:3]:  # Limit to 3
+        for item in limitations[:5]:  # Limit to 5
             add_bullet(item)
 
     add_divider()
 
     # Practical Analysis
     add_heading("Practical Analysis")
-    add_paragraph(f"*Why It Matters:* {args.get('why_it_matters', '')}")
-    add_paragraph(f"*Implementation Complexity:* {args.get('implementation_complexity', '')}")
+    # Why It Matters with bold label
+    if args.get('why_it_matters'):
+        children.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": [
+                {"type": "text", "text": {"content": "Why It Matters: "}, "annotations": {"bold": True}},
+                {"type": "text", "text": {"content": str(args.get('why_it_matters', ''))[:1900]}}
+            ]}
+        })
 
-    if args.get("use_cases"):
+    # Implementation Complexity with bold label
+    if args.get('implementation_complexity'):
+        children.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": [
+                {"type": "text", "text": {"content": "Implementation: "}, "annotations": {"bold": True}},
+                {"type": "text", "text": {"content": str(args.get('implementation_complexity', ''))[:1900]}}
+            ]}
+        })
+
+    # Handle use_cases - can be string or list in various formats
+    use_cases = parse_list_items(args.get("use_cases", []))
+    if use_cases:
         children.append({
             "object": "block",
             "type": "paragraph",
             "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Use Cases:"}, "annotations": {"bold": True}}]}
         })
-        for item in args["use_cases"][:5]:  # Limit to 5
+        for item in use_cases[:6]:  # Limit to 6
             add_bullet(item)
 
     add_divider()
 
-    # Questions to Explore
-    if args.get("questions_to_explore"):
+    # Handle questions_to_explore - can be string or list in various formats
+    questions = parse_list_items(args.get("questions_to_explore", []))
+    if questions:
         add_heading("Questions to Explore")
-        for q in args["questions_to_explore"][:3]:  # Limit to 3
+        for q in questions[:6]:  # Limit to 6
             add_bullet(q)
 
     # Safety check: Notion allows max 100 children blocks
@@ -441,6 +534,77 @@ async def send_telegram_message(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # =============================================================================
+# Cleanup Tools (for testing)
+# =============================================================================
+
+@tool(
+    "delete_notion_entries",
+    "Delete (archive) Notion entries by their page IDs. Used for test cleanup.",
+    {
+        "page_ids": str,  # Comma-separated page IDs
+    }
+)
+async def delete_notion_entries(args: dict[str, Any]) -> dict[str, Any]:
+    """Archive/delete Notion pages by ID."""
+    import logging
+    logger = logging.getLogger("second_brain_agent")
+
+    page_ids = args.get("page_ids", "")
+    if isinstance(page_ids, str):
+        page_ids = [p.strip() for p in page_ids.split(",") if p.strip()]
+
+    deleted = []
+    failed = []
+
+    for page_id in page_ids:
+        url = f"https://api.notion.com/v1/pages/{page_id}"
+        payload = {"archived": True}
+
+        try:
+            response = requests.patch(url, headers=_notion_headers(), json=payload, timeout=10)
+            if response.status_code == 200:
+                deleted.append(page_id)
+                logger.info(f"Deleted Notion page: {page_id}")
+            else:
+                failed.append(page_id)
+                logger.error(f"Failed to delete {page_id}: {response.status_code}")
+        except Exception as e:
+            failed.append(page_id)
+            logger.error(f"Error deleting {page_id}: {e}")
+
+    return {
+        "content": [{
+            "type": "text",
+            "text": f"Deleted {len(deleted)} entries. Failed: {len(failed)}"
+        }]
+    }
+
+
+async def get_recent_page_ids(hours: int = 1) -> list[str]:
+    """Get page IDs of entries created in the last N hours. For test cleanup."""
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+
+    since_date = (datetime.now() - timedelta(hours=hours)).isoformat()
+
+    payload = {
+        "filter": {
+            "timestamp": "created_time",
+            "created_time": {"after": since_date}
+        },
+        "sorts": [{"timestamp": "created_time", "direction": "descending"}]
+    }
+
+    try:
+        response = requests.post(url, headers=_notion_headers(), json=payload, timeout=10)
+        if response.status_code == 200:
+            results = response.json().get("results", [])
+            return [entry["id"] for entry in results]
+    except Exception:
+        pass
+    return []
+
+
+# =============================================================================
 # Create MCP Server
 # =============================================================================
 
@@ -455,5 +619,6 @@ def create_second_brain_server():
             search_notion,
             get_recent_entries,
             send_telegram_message,
+            delete_notion_entries,
         ]
     )
