@@ -161,6 +161,83 @@ def get_telegram_updates(offset=None):
         return None
 
 
+def download_telegram_file(file_id: str) -> tuple[bytes, str]:
+    """
+    Download a file from Telegram.
+    Returns (file_content, file_path) or (None, None) on error.
+    """
+    try:
+        # Get file path from Telegram
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile"
+        response = requests.get(url, params={"file_id": file_id}, timeout=10)
+        data = response.json()
+
+        if not data.get("ok"):
+            logger.error(f"Failed to get file info: {data}")
+            return None, None
+
+        file_path = data["result"]["file_path"]
+
+        # Download the file
+        download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+        file_response = requests.get(download_url, timeout=30)
+
+        if file_response.status_code == 200:
+            return file_response.content, file_path
+        else:
+            logger.error(f"Failed to download file: {file_response.status_code}")
+            return None, None
+
+    except Exception as e:
+        logger.error(f"Error downloading file: {e}")
+        return None, None
+
+
+def extract_file_content(file_content: bytes, file_name: str) -> str:
+    """
+    Extract text content from various file types.
+    Supports: .md, .txt, .py, .js, .json, .csv, .xml, .html, .yaml, .yml, .pdf
+    """
+    file_ext = file_name.lower().split('.')[-1] if '.' in file_name else ''
+
+    # Text-based files
+    text_extensions = ['md', 'txt', 'py', 'js', 'ts', 'json', 'csv', 'xml', 'html',
+                       'yaml', 'yml', 'css', 'sh', 'bash', 'sql', 'r', 'swift',
+                       'kt', 'java', 'c', 'cpp', 'h', 'go', 'rs', 'rb', 'php']
+
+    if file_ext in text_extensions:
+        try:
+            # Try UTF-8 first, then fall back to latin-1
+            try:
+                return file_content.decode('utf-8')
+            except UnicodeDecodeError:
+                return file_content.decode('latin-1')
+        except Exception as e:
+            logger.error(f"Error decoding text file: {e}")
+            return None
+
+    # PDF files
+    elif file_ext == 'pdf':
+        try:
+            import io
+            from PyPDF2 import PdfReader
+
+            pdf_reader = PdfReader(io.BytesIO(file_content))
+            text_parts = []
+            for page in pdf_reader.pages[:50]:  # Limit to 50 pages
+                text = page.extract_text()
+                if text:
+                    text_parts.append(text)
+            return '\n\n'.join(text_parts)
+        except Exception as e:
+            logger.error(f"Error extracting PDF content: {e}")
+            return None
+
+    else:
+        logger.warning(f"Unsupported file type: {file_ext}")
+        return None
+
+
 async def process_with_agent(message_text: str, context: str = "", model: str = None) -> str:
     """Process a message using Claude Agent SDK.
 
@@ -290,6 +367,10 @@ async def handle_message(message_text: str):
 `/reminders` - View upcoming tasks
 `/exit` - Exit Q&A mode
 `/help` - This message
+
+*File Upload:*
+Send any text file (.md, .txt, .py, .json, .pdf, etc.)
+Add `d:` caption for deep analysis
 
 *Examples:*
 `t: Review proposal by Friday 3pm`
@@ -555,11 +636,58 @@ async def main_loop():
                         # Handle document
                         document = message.get("document")
                         if document:
+                            file_id = document.get("file_id")
                             file_name = document.get("file_name", "unknown")
+                            file_size = document.get("file_size", 0)
                             caption = message.get("caption", "")
-                            await handle_message(
-                                f"Analyze this document: {file_name}. Caption: {caption}"
-                            )
+
+                            # Check file size (Telegram limit is 20MB for bots)
+                            if file_size > 20 * 1024 * 1024:
+                                send_capture_message(f"_File too large: {file_name} ({file_size // 1024 // 1024}MB). Max 20MB._")
+                                continue
+
+                            send_capture_message(f"_Downloading {file_name}..._")
+
+                            # Download and extract content
+                            file_content, file_path = download_telegram_file(file_id)
+
+                            if file_content:
+                                text_content = extract_file_content(file_content, file_name)
+
+                                if text_content:
+                                    # Truncate if too long (keep first 50k chars)
+                                    if len(text_content) > 50000:
+                                        text_content = text_content[:50000] + "\n\n[... truncated ...]"
+
+                                    # Determine if deep analysis requested
+                                    is_deep = caption.lower().startswith(("d:", "deep:"))
+
+                                    if is_deep:
+                                        context = (
+                                            f"The user uploaded a document for DEEP ANALYSIS.\n"
+                                            f"Filename: {file_name}\n"
+                                            f"Use the deep-analysis skill format.\n\n"
+                                            f"DOCUMENT CONTENT:\n{text_content}"
+                                        )
+                                        await handle_message(f"d: {caption.split(':', 1)[-1].strip() if ':' in caption else file_name}")
+                                    else:
+                                        context = (
+                                            f"The user uploaded a document.\n"
+                                            f"Filename: {file_name}\n"
+                                            f"Caption: {caption}\n\n"
+                                            f"Analyze this content, extract key insights, and save to Notion.\n\n"
+                                            f"DOCUMENT CONTENT:\n{text_content}"
+                                        )
+                                        response = await process_with_agent(
+                                            f"Analyze uploaded file: {file_name}",
+                                            context
+                                        )
+                                        if response:
+                                            send_capture_message(response)
+                                else:
+                                    send_capture_message(f"_Could not extract text from {file_name}. Unsupported format._")
+                            else:
+                                send_capture_message(f"_Failed to download {file_name}._")
                             continue
 
                         # Handle text
