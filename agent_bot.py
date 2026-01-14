@@ -655,9 +655,11 @@ async def main_loop():
                                 text_content = extract_file_content(file_content, file_name)
 
                                 if text_content:
-                                    # Truncate if too long (keep first 50k chars)
-                                    if len(text_content) > 50000:
-                                        text_content = text_content[:50000] + "\n\n[... truncated ...]"
+                                    # Truncate if too long (15k chars to avoid OOM on Railway)
+                                    original_len = len(text_content)
+                                    if original_len > 15000:
+                                        text_content = text_content[:15000] + "\n\n[... truncated, showing 15k of " + str(original_len) + " chars ...]"
+                                        logger.info(f"Truncated file content from {original_len} to 15000 chars")
 
                                     # Determine if deep analysis requested
                                     is_deep = caption.lower().startswith(("d:", "deep:"))
@@ -669,7 +671,10 @@ async def main_loop():
                                             f"Use the deep-analysis skill format.\n\n"
                                             f"DOCUMENT CONTENT:\n{text_content}"
                                         )
-                                        await handle_message(f"d: {caption.split(':', 1)[-1].strip() if ':' in caption else file_name}")
+                                        response = await process_with_agent(
+                                            f"Deep analyze document: {file_name}",
+                                            context
+                                        )
                                     else:
                                         context = (
                                             f"The user uploaded a document.\n"
@@ -682,8 +687,8 @@ async def main_loop():
                                             f"Analyze uploaded file: {file_name}",
                                             context
                                         )
-                                        if response:
-                                            send_capture_message(response)
+                                    if response:
+                                        send_capture_message(response)
                                 else:
                                     send_capture_message(f"_Could not extract text from {file_name}. Unsupported format._")
                             else:
