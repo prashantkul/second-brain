@@ -242,9 +242,10 @@ second-brain/
 npm install -g @railway/cli
 railway login
 railway init
+Add environment variables in Railway dashboard.
 railway up
 ```
-Add environment variables in Railway dashboard.
+
 
 ### Option 2: Render
 1. Connect GitHub repo to [Render](https://render.com)
