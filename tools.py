@@ -55,7 +55,7 @@ def strip_markdown(text):
     "Save a QUICK entry to Notion. For Tasks with due dates, include due_date in ISO format.",
     {
         "title": str,
-        "category": str,  # People, Research, Links, Tasks
+        "category": str,  # People, Research, Links, Tasks, Articles
         "description": str,
         "priority": str,  # High, Medium, Low
         "tags": str,  # Comma-separated tags like "AI, machine learning, NLP"
@@ -123,11 +123,12 @@ async def save_to_notion(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     "save_deep_analysis",
-    "REQUIRED for d: prefix deep analysis. Saves comprehensive paper analysis with structured sections to Notion page body",
+    "REQUIRED for d: prefix AND a: prefix. Saves comprehensive analysis with structured sections to Notion page body. Use category='Articles' for articles, category='Research' for papers.",
     {
         "title": str,
         "authors": str,
         "paper_type": str,
+        "category": str,  # "Research" or "Articles"
         "problem": str,
         "methodology": str,
         "key_contributions": list,
@@ -156,9 +157,14 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
     # Build description from TL;DR and problem (strip markdown)
     description = strip_markdown(f"{args.get('tldr', '')} | Problem: {args.get('problem', '')}")[:2000]
 
+    # Support both Research (papers) and Articles categories
+    category = args.get("category", "Research")
+    if category not in ["Research", "Articles"]:
+        category = "Research"
+
     properties = {
         "Name": {"title": [{"text": {"content": args.get("title", "Untitled")}}]},
-        "Category": {"select": {"name": "Research"}},
+        "Category": {"select": {"name": category}},
         "Description": {"rich_text": [{"text": {"content": description}}]},
         "Status": {"select": {"name": "New"}},
         "Priority": {"select": {"name": args.get("priority", "Medium")}},
@@ -386,6 +392,176 @@ async def save_deep_analysis(args: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
+    "save_article_analysis",
+    "REQUIRED for a: prefix articles. Saves article with summary, key points, why it matters, and follow-up actions to Notion page body",
+    {
+        "title": str,
+        "tldr": str,
+        "key_points": list,
+        "why_it_matters": str,
+        "follow_up_actions": list,
+        "reading_time": str,
+        "priority": str,
+        "tags": str,
+        "source_url": str,
+    }
+)
+async def save_article_analysis(args: dict[str, Any]) -> dict[str, Any]:
+    """Save article analysis with essential structured content to Notion."""
+    import logging
+    logger = logging.getLogger("second_brain_agent")
+    logger.info(f"save_article_analysis called with title: {args.get('title', 'N/A')}")
+
+    url = "https://api.notion.com/v1/pages"
+
+    # Build description from TL;DR
+    description = strip_markdown(args.get('tldr', ''))[:2000]
+
+    properties = {
+        "Name": {"title": [{"text": {"content": args.get("title", "Untitled")[:100]}}]},
+        "Category": {"select": {"name": "Articles"}},
+        "Description": {"rich_text": [{"text": {"content": description}}]},
+        "Status": {"select": {"name": "New"}},
+        "Priority": {"select": {"name": args.get("priority", "Medium")}},
+    }
+
+    # Handle tags
+    tags = args.get("tags", [])
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+    if tags:
+        properties["Tags"] = {"multi_select": [{"name": tag[:50]} for tag in tags[:5]]}
+
+    if args.get("source_url"):
+        properties["Source"] = {"url": args["source_url"]}
+
+    # Build rich page content
+    children = []
+
+    def add_heading(text):
+        children.append({
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {"rich_text": [{"type": "text", "text": {"content": text}}]}
+        })
+
+    def add_paragraph(text):
+        if text:
+            children.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"type": "text", "text": {"content": strip_markdown(text)[:2000]}}]}
+            })
+
+    def add_bullet(text):
+        if text:
+            children.append({
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": strip_markdown(text)[:2000]}}]}
+            })
+
+    def add_numbered(text):
+        if text:
+            children.append({
+                "object": "block",
+                "type": "numbered_list_item",
+                "numbered_list_item": {"rich_text": [{"type": "text", "text": {"content": strip_markdown(text)[:2000]}}]}
+            })
+
+    def add_divider():
+        children.append({"object": "block", "type": "divider", "divider": {}})
+
+    # Helper to parse list items
+    def parse_list_items(items):
+        import re
+        if isinstance(items, list):
+            return items
+        if isinstance(items, str):
+            if "\n" in items:
+                return [i.strip() for i in items.split("\n") if i.strip()]
+            numbered = re.split(r'\d+[\)\.]\s*', items)
+            numbered = [i.strip() for i in numbered if i.strip()]
+            if len(numbered) > 1:
+                return numbered
+            bulleted = re.split(r'[•\-]\s*', items)
+            bulleted = [i.strip() for i in bulleted if i.strip()]
+            if len(bulleted) > 1:
+                return bulleted
+            return [items.strip()] if items.strip() else []
+        return []
+
+    # TL;DR / Summary
+    add_heading("Summary")
+    add_paragraph(args.get("tldr", ""))
+    if args.get('reading_time'):
+        add_paragraph(f"Reading Time: {args.get('reading_time')}")
+
+    add_divider()
+
+    # Key Points
+    key_points = parse_list_items(args.get("key_points", []))
+    if key_points:
+        add_heading("Key Points")
+        for item in key_points[:12]:
+            add_bullet(item)
+
+    add_divider()
+
+    # Why It Matters
+    if args.get('why_it_matters'):
+        add_heading("Why It Matters")
+        add_paragraph(args.get('why_it_matters'))
+
+    add_divider()
+
+    # Follow-up Actions
+    actions = parse_list_items(args.get("follow_up_actions", []))
+    if actions:
+        add_heading("Follow-up Actions")
+        for item in actions[:8]:
+            add_numbered(item)
+
+    # Safety check: Notion allows max 100 children blocks
+    if len(children) > 100:
+        logger.warning(f"Truncating children from {len(children)} to 100 blocks")
+        children = children[:100]
+
+    payload = {
+        "parent": {"database_id": NOTION_DATABASE_ID},
+        "properties": properties,
+        "children": children
+    }
+
+    try:
+        logger.info(f"Saving article to Notion with {len(children)} children blocks")
+        response = requests.post(url, headers=_notion_headers(), json=payload, timeout=30)
+        logger.info(f"Notion response: {response.status_code}")
+        if response.status_code == 200:
+            result = response.json()
+            return {
+                "content": [{
+                    "type": "text",
+                    "text": f"Article saved to Notion: {args['title']}\nURL: {result.get('url', 'N/A')}"
+                }]
+            }
+        else:
+            error_text = response.text[:500]
+            logger.error(f"Notion API error: {response.status_code} - {error_text}")
+            return {
+                "content": [{
+                    "type": "text",
+                    "text": f"Error saving article: {response.status_code} - {error_text}"
+                }]
+            }
+    except Exception as e:
+        logger.error(f"Exception in save_article_analysis: {str(e)}")
+        return {
+            "content": [{"type": "text", "text": f"Error: {str(e)}"}]
+        }
+
+
+@tool(
     "search_notion",
     "Search the Second Brain Notion database",
     {
@@ -468,7 +644,7 @@ async def get_recent_entries(args: dict[str, Any]) -> dict[str, Any]:
         if response.status_code == 200:
             results = response.json().get("results", [])
 
-            by_category = {"Tasks": [], "People": [], "Research": [], "Links": []}
+            by_category = {"Tasks": [], "People": [], "Research": [], "Links": [], "Articles": []}
 
             for entry in results:
                 props = entry.get("properties", {})
@@ -622,6 +798,7 @@ def create_second_brain_server():
         tools=[
             save_to_notion,
             save_deep_analysis,
+            save_article_analysis,
             search_notion,
             get_recent_entries,
             send_telegram_message,

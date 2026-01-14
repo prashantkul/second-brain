@@ -50,6 +50,7 @@ def create_database():
                         {"name": "Research", "color": "purple"},
                         {"name": "Links", "color": "green"},
                         {"name": "Tasks", "color": "orange"},
+                        {"name": "Articles", "color": "pink"},
                     ]
                 }
             },
