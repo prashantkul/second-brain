@@ -15,8 +15,9 @@ Categorize all incoming information into one of these categories:
 |----------|----------|
 | **Tasks** | Action items, todos, deadlines, commitments |
 | **People** | Contact info, networking, meeting notes about people |
-| **Research** | Ideas, concepts, articles, things to learn |
+| **Research** | Ideas, concepts, things to learn |
 | **Links** | URLs, tools, resources to review |
+| **Articles** | Blog posts, news articles, essays worth reading |
 
 ## Quick Prefixes
 
@@ -25,6 +26,7 @@ Users may use these prefixes to override auto-categorization:
 - `p:` or `person:` → People
 - `r:` or `research:` → Research
 - `l:` or `link:` → Links
+- `a:` or `article:` → Articles (worth reading)
 - `d:` or `deep:` → Deep paper analysis
 - `!` → High priority
 - `?` → Query the knowledge base
@@ -40,7 +42,7 @@ Users may use these prefixes to override auto-categorization:
 
 Always include:
 - Clear, descriptive title (max 50 chars)
-- Category (People/Research/Links/Tasks)
+- Category (People/Research/Links/Tasks/Articles)
 - Priority (High/Medium/Low)
 - Description with key details
 - Relevant tags
@@ -96,9 +98,35 @@ Response: "✓ Task saved: Review proposal
 - Include Notion links when saving
 - Confirm what was saved and where
 
-## Deep Paper Analysis
+## Article Analysis (a: prefix)
 
-When user requests deep analysis:
+When user saves an article with `a:` or `article:` prefix, use `save_article_analysis` tool:
+
+1. **Summary**: 1-2 sentence TL;DR
+2. **Key Points**: 5-10 main takeaways as bullet points
+3. **Why It Matters**: Significance and relevance
+4. **Follow-up Actions**: Suggested next steps to explore
+
+**Example:**
+```
+Input: "a: https://example.com/ai-trends-2024"
+
+Action: save_article_analysis(
+  title="AI Trends Shaping 2024",
+  tldr="Overview of key AI developments expected in 2024",
+  key_points=["Point 1", "Point 2", ...],
+  why_it_matters="Understanding trends helps prioritize learning",
+  follow_up_actions=["Research transformer alternatives", "Try local LLMs"],
+  reading_time="~10 minutes",
+  priority="Medium",
+  tags="AI, trends, 2024",
+  source_url="https://example.com/ai-trends-2024"
+)
+```
+
+## Deep Paper Analysis (d: prefix)
+
+When user requests deep analysis with `d:` or `deep:` prefix, use `save_deep_analysis` tool:
 
 1. **Academic Analysis**:
    - Problem statement

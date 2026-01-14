@@ -21,12 +21,131 @@ import threading
 from dotenv import load_dotenv
 
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+import re
+from bs4 import BeautifulSoup
 
 from tools import create_second_brain_server
+
+
+# =============================================================================
+# URL Pre-fetching (memory-safe)
+# =============================================================================
+
+def extract_url(text: str) -> str | None:
+    """Extract first URL from text."""
+    url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+    match = re.search(url_pattern, text)
+    return match.group(0) if match else None
+
+
+def prefetch_url(url: str, max_chars: int = 25000, max_pdf_pages: int = 30) -> tuple[str | None, str | None]:
+    """
+    Fetch URL content with size limits to prevent OOM.
+    Supports HTML pages and PDF documents.
+    Returns (content, error_message).
+    """
+    try:
+        # Stream response to limit memory usage
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; SecondBrain/1.0)"
+        }
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=60,  # Longer timeout for PDFs
+            stream=True
+        )
+        response.raise_for_status()
+
+        # Check content type
+        content_type = response.headers.get("Content-Type", "").lower()
+
+        # Handle PDFs
+        if "pdf" in content_type or url.lower().endswith(".pdf"):
+            import io
+            from PyPDF2 import PdfReader
+
+            # Download PDF (limit to 20MB)
+            max_pdf_size = 20 * 1024 * 1024
+            pdf_content = b""
+            for chunk in response.iter_content(chunk_size=8192):
+                pdf_content += chunk
+                if len(pdf_content) > max_pdf_size:
+                    return None, "PDF too large (>20MB)"
+
+            # Extract text from PDF
+            try:
+                pdf_reader = PdfReader(io.BytesIO(pdf_content))
+                text_parts = []
+                pages_to_read = min(len(pdf_reader.pages), max_pdf_pages)
+
+                for i in range(pages_to_read):
+                    page_text = pdf_reader.pages[i].extract_text()
+                    if page_text:
+                        text_parts.append(page_text)
+
+                text = "\n\n".join(text_parts)
+
+                if len(pdf_reader.pages) > max_pdf_pages:
+                    text += f"\n\n[... showing {max_pdf_pages} of {len(pdf_reader.pages)} pages ...]"
+
+                # Truncate if still too long
+                if len(text) > max_chars:
+                    text = text[:max_chars] + f"\n\n[... truncated to {max_chars} chars ...]"
+
+                if not text.strip():
+                    return None, "PDF appears to be image-based (no extractable text). Try a text-based PDF or paste content manually."
+
+                logger.info(f"Extracted {len(text)} chars from PDF ({pages_to_read} pages)")
+                return text, None
+
+            except Exception as e:
+                logger.error(f"PDF extraction error: {e}")
+                return None, f"Could not extract PDF text: {str(e)[:100]}"
+
+        # Skip other binary files
+        if any(t in content_type for t in ["image", "video", "audio", "zip", "octet-stream"]):
+            return None, f"Cannot fetch binary content ({content_type.split(';')[0]})"
+
+        # Read limited content for HTML/text
+        content = ""
+        for chunk in response.iter_content(chunk_size=8192, decode_unicode=True):
+            if chunk:
+                content += chunk
+                if len(content) > max_chars * 2:  # Allow extra for HTML overhead
+                    break
+
+        # Parse HTML to text
+        if "html" in content_type:
+            soup = BeautifulSoup(content, "html.parser")
+            # Remove scripts, styles, navigation
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+        else:
+            text = content
+
+        # Truncate if needed
+        if len(text) > max_chars:
+            text = text[:max_chars] + f"\n\n[... truncated to {max_chars} chars ...]"
+
+        return text, None
+
+    except requests.exceptions.Timeout:
+        return None, "URL fetch timed out (60s limit)"
+    except requests.exceptions.RequestException as e:
+        return None, f"Could not fetch URL: {str(e)[:100]}"
+    except Exception as e:
+        return None, f"Error processing URL: {str(e)[:100]}"
 
 # Load environment
 env_path = Path(__file__).parent / ".env"
 load_dotenv(env_path)
+
+# Set API key for Claude SDK (using custom env var name to avoid conflicts with Claude Code)
+second_brain_api_key = os.environ.get("SECOND_BRAIN_API_KEY")
+if second_brain_api_key:
+    os.environ["ANTHROPIC_API_KEY"] = second_brain_api_key
 
 # Configuration
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_CODE")
@@ -59,7 +178,7 @@ mcp_server = create_second_brain_server()
 SYSTEM_PROMPT = """You are a Second Brain assistant integrated with Telegram and Notion.
 
 Your capabilities:
-1. Categorize messages into Tasks, People, Research, or Links
+1. Categorize messages into Tasks, People, Research, Links, or Articles
 2. Analyze URLs and documents - fetch content, extract insights
 3. Save to Notion - store entries with proper categorization
 4. Search knowledge base - query saved entries
@@ -70,6 +189,7 @@ Quick Prefixes:
 - p: or person: → People
 - r: or research: → Research
 - l: or link: → Links
+- a: or article: → Articles (blog posts, essays worth reading)
 - j: or job: → Jobs (analyze job posting, extract requirements, suggest skills)
 - d: or deep: → Deep paper analysis
 - rp: or research-potential: → Research potential analysis (is this worth pursuing?)
@@ -258,6 +378,7 @@ async def process_with_agent(message_text: str, context: str = "", model: str = 
         allowed_tools=[
             "mcp__second-brain__save_to_notion",
             "mcp__second-brain__save_deep_analysis",
+            "mcp__second-brain__save_article_analysis",
             "mcp__second-brain__search_notion",
             "mcp__second-brain__get_recent_entries",
             "mcp__second-brain__send_telegram_message",
@@ -334,7 +455,7 @@ def should_exit_qa_mode(message_text: str) -> bool:
     if message_text.startswith("/"):
         return True
     # Prefixes exit Q&A
-    prefixes = ("t:", "task:", "p:", "person:", "r:", "research:", "l:", "link:", "d:", "deep:", "!")
+    prefixes = ("t:", "task:", "p:", "person:", "r:", "research:", "l:", "link:", "a:", "article:", "d:", "deep:", "!")
     if message_text.lower().startswith(prefixes):
         return True
     # New URL exits Q&A
@@ -356,7 +477,7 @@ async def handle_message(message_text: str):
             help_text = """*Second Brain Agent Bot*
 
 *Prefixes:*
-`t:` Task | `p:` Person | `r:` Research | `l:` Link
+`t:` Task | `p:` Person | `r:` Research | `l:` Link | `a:` Article
 `j:` Job analysis | `d:` Deep paper analysis
 `rp:` Research potential | `rp-deep:` Deep research dive
 `!` High priority | `?` Query
@@ -510,22 +631,108 @@ Add `d:` caption for deep analysis
         )
     elif message_text.lower().startswith(("j:", "job:")):
         send_capture_message("_Analyzing job posting..._")
-        context = (
-            "The user wants to analyze a JOB POSTING. Use the job-analysis skill. "
-            "Extract: company, role, key requirements, required skills, nice-to-have skills. "
-            "Then suggest skills to develop based on gaps. Save to Notion with category 'Jobs'."
-        )
+        url = extract_url(message_text)
+        if url:
+            content, error = prefetch_url(url)
+            if content:
+                context = (
+                    f"The user wants to analyze a JOB POSTING.\n"
+                    f"URL: {url}\n"
+                    f"Use the job-analysis skill. Extract: company, role, key requirements, skills. "
+                    f"Suggest skills to develop. Save to Notion with category 'Jobs'.\n\n"
+                    f"JOB POSTING CONTENT:\n{content}"
+                )
+            else:
+                context = (
+                    f"The user wants to analyze a JOB POSTING. URL: {url}\n"
+                    f"Note: {error or 'Could not fetch content'}. "
+                    f"Try using WebFetch as fallback, or ask user to paste the job description."
+                )
+        else:
+            context = (
+                "The user wants to analyze a JOB POSTING. Use the job-analysis skill. "
+                "Extract: company, role, key requirements, required skills, nice-to-have skills. "
+                "Then suggest skills to develop based on gaps. Save to Notion with category 'Jobs'."
+            )
     elif message_text.lower().startswith(("d:", "deep:")):
         is_deep_analysis = True
         send_capture_message("_Deep paper analysis..._")
-        context = (
-            "The user wants DEEP ANALYSIS of this paper/article. "
-            "Use the deep-analysis skill format. "
-            "After analysis, save to Notion using save_document_to_notion."
-        )
+        url = extract_url(message_text)
+        if url:
+            # For research papers: 50 pages, 80k chars (typical paper is 8-15 pages)
+            content, error = prefetch_url(url, max_chars=80000, max_pdf_pages=50)
+            if content:
+                context = (
+                    f"The user wants DEEP ANALYSIS of this paper/article.\n"
+                    f"URL: {url}\n"
+                    f"Use the deep-analysis skill format. "
+                    f"After analysis, save to Notion using save_deep_analysis.\n\n"
+                    f"ARTICLE CONTENT:\n{content}"
+                )
+            else:
+                context = (
+                    f"The user wants DEEP ANALYSIS. URL: {url}\n"
+                    f"Note: {error or 'Could not fetch content'}. "
+                    f"If this is a PDF or requires special handling, let the user know. "
+                    f"Otherwise try using WebFetch as fallback."
+                )
+        else:
+            context = (
+                "The user wants DEEP ANALYSIS of this paper/article. "
+                "Use the deep-analysis skill format. "
+                "After analysis, save to Notion using save_deep_analysis."
+            )
+    elif message_text.lower().startswith(("a:", "article:")):
+        send_capture_message("_Analyzing article..._")
+        url = extract_url(message_text)
+        if url:
+            content, error = prefetch_url(url, max_chars=40000)
+            if content:
+                context = (
+                    f"The user wants to save an ARTICLE worth reading.\n"
+                    f"URL: {url}\n\n"
+                    f"Analyze the article and use save_article_analysis tool with:\n"
+                    f"- title: Clear, descriptive title\n"
+                    f"- tldr: 1-2 sentence summary\n"
+                    f"- key_points: List of main takeaways (5-10 bullet points)\n"
+                    f"- why_it_matters: Why this article is significant/relevant\n"
+                    f"- follow_up_actions: Suggested next steps or things to explore\n"
+                    f"- reading_time: Estimated time to read\n"
+                    f"- priority: High/Medium/Low based on importance\n"
+                    f"- tags: Relevant topic tags\n"
+                    f"- source_url: {url}\n\n"
+                    f"ARTICLE CONTENT:\n{content}"
+                )
+            else:
+                context = (
+                    f"The user wants to save an article. URL: {url}\n"
+                    f"Note: {error or 'Could not fetch content'}. "
+                    f"Try WebFetch as fallback, then use save_article_analysis tool."
+                )
+        else:
+            context = (
+                "The user wants to save an ARTICLE worth reading. "
+                "Use save_article_analysis tool to save with proper structure."
+            )
     elif "http" in message_text:
         send_capture_message("_Processing URL..._")
-        context = "The user shared a URL. Fetch the content, analyze it, and save to Notion with proper categorization."
+        url = extract_url(message_text)
+        if url:
+            content, error = prefetch_url(url)
+            if content:
+                context = (
+                    f"The user shared a URL: {url}\n"
+                    f"Analyze the content, categorize appropriately, and save to Notion.\n\n"
+                    f"URL CONTENT:\n{content}"
+                )
+            else:
+                context = (
+                    f"The user shared a URL: {url}\n"
+                    f"Note: {error or 'Could not fetch content'}. "
+                    f"Try to categorize based on the URL and save to Notion."
+                )
+        else:
+            context = "The user shared a URL. Analyze and save to Notion with proper categorization."
     else:
         send_capture_message("_Processing..._")
 
@@ -655,9 +862,11 @@ async def main_loop():
                                 text_content = extract_file_content(file_content, file_name)
 
                                 if text_content:
-                                    # Truncate if too long (keep first 50k chars)
-                                    if len(text_content) > 50000:
-                                        text_content = text_content[:50000] + "\n\n[... truncated ...]"
+                                    # Truncate if too long (15k chars to avoid OOM on Railway)
+                                    original_len = len(text_content)
+                                    if original_len > 15000:
+                                        text_content = text_content[:15000] + "\n\n[... truncated, showing 15k of " + str(original_len) + " chars ...]"
+                                        logger.info(f"Truncated file content from {original_len} to 15000 chars")
 
                                     # Determine if deep analysis requested
                                     is_deep = caption.lower().startswith(("d:", "deep:"))
@@ -669,7 +878,10 @@ async def main_loop():
                                             f"Use the deep-analysis skill format.\n\n"
                                             f"DOCUMENT CONTENT:\n{text_content}"
                                         )
-                                        await handle_message(f"d: {caption.split(':', 1)[-1].strip() if ':' in caption else file_name}")
+                                        response = await process_with_agent(
+                                            f"Deep analyze document: {file_name}",
+                                            context
+                                        )
                                     else:
                                         context = (
                                             f"The user uploaded a document.\n"
@@ -682,8 +894,8 @@ async def main_loop():
                                             f"Analyze uploaded file: {file_name}",
                                             context
                                         )
-                                        if response:
-                                            send_capture_message(response)
+                                    if response:
+                                        send_capture_message(response)
                                 else:
                                     send_capture_message(f"_Could not extract text from {file_name}. Unsupported format._")
                             else:

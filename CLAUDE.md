@@ -23,10 +23,10 @@ The bot uses **Claude Agent SDK** with a skills-based architecture:
    - Pattern: `async with ClaudeSDKClient(options=options) as client:`
 
 2. **MCP Server** - Created in `tools.py` via `create_second_brain_server()`
-   - Tools: `save_to_notion`, `save_deep_analysis`, `search_notion`, `get_recent_entries`, `send_telegram_message`
+   - Tools: `save_to_notion`, `save_deep_analysis`, `save_article_analysis`, `search_notion`, `get_recent_entries`, `send_telegram_message`
 
 3. **Skills** (in `.claude/skills/`):
-   - `SECOND_BRAIN.md` - Main categorization skill (t:, p:, r:, l: prefixes)
+   - `SECOND_BRAIN.md` - Main categorization skill (t:, p:, r:, l:, a: prefixes)
    - `DEEP_ANALYSIS.md` - Research paper analysis (d: prefix)
    - `JOB_ANALYSIS.md` - Job posting analysis (j: prefix)
 
@@ -70,6 +70,7 @@ pkill -9 -f "agent_bot.py"
 | Person | `p:` or `person:` | `p: Met John from Acme Corp` |
 | Research | `r:` or `research:` | `r: Look into vector databases` |
 | Link | `l:` or `link:` | `l: https://example.com` |
+| Article | `a:` or `article:` | `a: https://blog.example.com/post` |
 | Job Analysis | `j:` or `job:` | `j: https://lever.co/job/...` |
 | Deep Analysis | `d:` or `deep:` | `d: https://arxiv.org/abs/...` |
 | Query | `?` | `? What do I know about AI?` |
@@ -142,14 +143,14 @@ TELEGRAM_DIGEST_BOT_TOKEN=<digest bot token>
 CHAT_ID=<your telegram chat id>
 NOTION_TOKEN=<notion integration token>
 NOTION_DATABASE_ID=<notion database id>
-ANTHROPIC_API_KEY=<claude api key>
+SECOND_BRAIN_API_KEY=<claude api key>
 ```
 
 ## Notion Schema
 
 The Notion database should have these properties:
 - **Title** (title)
-- **Category** (select): Tasks, People, Research, Links, Jobs
+- **Category** (select): Tasks, People, Research, Links, Articles, Jobs
 - **Priority** (select): High, Medium, Low
 - **Status** (select): New, In Progress, Done
 - **Tags** (multi-select)

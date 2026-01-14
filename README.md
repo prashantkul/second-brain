@@ -171,7 +171,7 @@ TELEGRAM_DIGEST_BOT_TOKEN=your_digest_bot_token
 CHAT_ID=your_telegram_chat_id
 NOTION_TOKEN=your_notion_integration_token
 NOTION_DATABASE_ID=your_notion_database_id
-ANTHROPIC_API_KEY=your_anthropic_api_key
+SECOND_BRAIN_API_KEY=your_anthropic_api_key
 ```
 
 ### Setup Guides
@@ -258,7 +258,7 @@ railway up
 ```bash
 curl -L https://fly.io/install.sh | sh
 fly launch
-fly secrets set TELEGRAM_BOT_CODE=xxx ANTHROPIC_API_KEY=xxx ...
+fly secrets set TELEGRAM_BOT_CODE=xxx SECOND_BRAIN_API_KEY=xxx ...
 fly deploy
 ```
 
@@ -291,7 +291,7 @@ docker run -d --env-file .env second-brain
 
 **Agent SDK errors?**
 - Ensure Claude Code CLI is installed (`claude --version`)
-- Verify ANTHROPIC_API_KEY is set
+- Verify SECOND_BRAIN_API_KEY is set
 
 ## License
 
